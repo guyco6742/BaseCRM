@@ -1,0 +1,65 @@
+@import "tailwindcss";
+
+/* ===== BaseCRM — פלטת צבעים כהה בסגנון Monday ===== */
+@theme {
+  --color-bg: #1c1f3b;          /* רקע ראשי */
+  --color-sidebar: #181b34;     /* סרגל צד */
+  --color-surface: #292f4c;     /* משטחים / כרטיסים */
+  --color-surface-2: #30365a;   /* משטח משני / hover */
+  --color-border: #3b4064;      /* גבולות */
+  --color-border-light: #4a4f77;
+
+  --color-text: #ffffff;        /* טקסט ראשי */
+  --color-text-muted: #c3c6d4;  /* טקסט משני */
+  --color-text-dim: #8b8fad;    /* טקסט עמום */
+
+  --color-accent: #0073ea;      /* כחול Monday */
+  --color-accent-hover: #0060c2;
+
+  /* צבעי סטטוס */
+  --color-status-green: #00c875;
+  --color-status-orange: #fdab3d;
+  --color-status-red: #e2445c;
+  --color-status-purple: #a25ddc;
+  --color-status-blue: #579bfc;
+  --color-status-gray: #c4c4c4;
+
+  --font-sans: system-ui, -apple-system, "Segoe UI", "Rubik", Arial, sans-serif;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* פס גלילה עדין תואם ערכת נושא כהה */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 6px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-border-light);
+}
+
+/* מבטל את חצי ה-spinner במספרים */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
