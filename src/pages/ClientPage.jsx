@@ -382,8 +382,67 @@ export default function ClientPage() {
         <div className="space-y-6">
           {/* אנשי קשר */}
           <section className="rounded-lg border border-border bg-surface p-4" data-testid="client-contacts">
+            {/* איש קשר ראשי — ברירת מחדל: הלקוח עצמו */}
+            <div className="mb-4 border-b border-border pb-4" data-testid="primary-contact">
+              <label className="flex items-center gap-2 text-sm text-text">
+                <input
+                  type="checkbox"
+                  checked={client.contact_is_self}
+                  onChange={(e) => patchClient({ contact_is_self: e.target.checked })}
+                  className="h-4 w-4 accent-[var(--color-accent)]"
+                  data-testid="primary-contact-is-self"
+                />
+                איש הקשר הוא הלקוח עצמו
+              </label>
+
+              {client.contact_is_self ? (
+                <div
+                  className="mt-2 rounded-md bg-bg px-3 py-2 text-sm text-text-muted"
+                  data-testid="primary-contact-self-summary"
+                >
+                  <div>{client.name}</div>
+                  {client.phone && <div dir="ltr">{client.phone}</div>}
+                  {client.email && <div dir="ltr">{client.email}</div>}
+                </div>
+              ) : (
+                <div className="mt-3 space-y-3" onKeyDown={handleEnterAsTab}>
+                  <EditableField
+                    label="שם איש הקשר"
+                    value={client.contact_name}
+                    onSave={(v) => patchClient({ contact_name: v })}
+                    testid="primary-contact-name"
+                  />
+                  <div className="grid grid-cols-2 gap-3">
+                    <EditableField
+                      label="תפקיד"
+                      value={client.contact_role}
+                      onSave={(v) => patchClient({ contact_role: v })}
+                      testid="primary-contact-role"
+                    />
+                    <EditableField
+                      label="טלפון"
+                      type="tel"
+                      value={client.contact_phone}
+                      onSave={(v) => patchClient({ contact_phone: v })}
+                      testid="primary-contact-phone"
+                      dir="ltr"
+                    />
+                  </div>
+                  <EditableField
+                    label="אימייל"
+                    type="email"
+                    value={client.contact_email}
+                    onSave={(v) => patchClient({ contact_email: v })}
+                    testid="primary-contact-email"
+                    dir="ltr"
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* אנשי קשר נוספים */}
             <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-text">אנשי קשר ({contacts.length})</h2>
+              <h2 className="text-lg font-semibold text-text">אנשי קשר נוספים ({contacts.length})</h2>
               <Button size="sm" variant="secondary" onClick={openAddContact} data-testid="contact-add-btn">
                 + איש קשר
               </Button>
