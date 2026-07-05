@@ -31,7 +31,7 @@ export default function AdminPage() {
     try {
       const { data, error } = await supabase
         .from('organizations')
-        .select('id, name, slug, logo_url, is_archived, created_at, memberships(count)')
+        .select('id, name, slug, logo_url, is_archived, features, created_at, memberships(count)')
         .order('created_at', { ascending: false })
       if (error) throw error
       setOrgs(data || [])
@@ -78,6 +78,21 @@ export default function AdminPage() {
       await load()
     } catch {
       setError('השבתת הארגון נכשלה.')
+    }
+  }
+
+  // הפעלה/כיבוי של עמוד אופציונלי (feature flag) לארגון ספציפי
+  async function handleToggleFeature(org, key) {
+    const nextValue = !org.features?.[key]
+    try {
+      const { error } = await supabase
+        .from('organizations')
+        .update({ features: { ...org.features, [key]: nextValue } })
+        .eq('id', org.id)
+      if (error) throw error
+      await load()
+    } catch {
+      setError('עדכון התכונה נכשל.')
     }
   }
 
@@ -146,6 +161,15 @@ export default function AdminPage() {
                 </div>
               </div>
               <div className="flex items-center gap-2">
+                <Button
+                  variant={org.features?.send_contract ? 'primary' : 'secondary'}
+                  size="sm"
+                  onClick={() => handleToggleFeature(org, 'send_contract')}
+                  title="הצג/הסתר את עמוד 'שליחת חוזה' לארגון הזה"
+                  data-testid={`admin-toggle-send-contract-${org.id}`}
+                >
+                  ✍️ עמוד חוזה: {org.features?.send_contract ? 'פעיל' : 'כבוי'}
+                </Button>
                 <Button
                   variant="secondary"
                   size="sm"

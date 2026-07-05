@@ -16,6 +16,7 @@ import BoardPage from './pages/BoardPage'
 import ClientsPage from './pages/ClientsPage'
 import ClientPage from './pages/ClientPage'
 import OrgSettingsPage from './pages/OrgSettingsPage'
+import SendContractPage from './pages/SendContractPage'
 import NotFoundPage from './pages/NotFoundPage'
 
 export default function App() {
@@ -47,6 +48,7 @@ export default function App() {
           <Route path="clients" element={<ClientsPage />} />
           <Route path="clients/:clientId" element={<ClientPage />} />
           <Route path="settings" element={<OrgSettingsPage />} />
+          <Route path="send-contract" element={<SendContractPage />} />
         </Route>
       </Route>
 
