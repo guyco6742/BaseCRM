@@ -33,6 +33,7 @@
    ברירת המחדל (בלי ה-attribute) נשארת הפלטה הכהה למעלה. */
 html[data-theme="light"] {
   --color-bg: #f5f6fb;
+  --color-sidebar: #f1f3f9;     /* בלי טוקן ייעודי במוקאפ — כמו surface-2 */
   --color-surface: #ffffff;
   --color-surface-2: #f1f3f9;
   --color-border: #e6e8f1;
