@@ -5,7 +5,7 @@ import FilesCell from './FilesCell'
 import { formatDateTime } from '../../lib/columnTypes'
 
 // עורך טקסט inline (משמש גם למספר/קישור/מייל/טלפון)
-function TextEditor({ value, onChange, type = 'text', display }) {
+export function TextEditor({ value, onChange, type = 'text', display }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(value ?? '')
   const inputRef = useRef(null)
@@ -363,7 +363,7 @@ function LongTextPanel({ value, onChange, close }) {
   )
 }
 
-function LinkLikeCell({ value, onChange, canEdit, kind }) {
+export function LinkLikeCell({ value, onChange, canEdit, kind }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(value ?? '')
   useEffect(() => setDraft(value ?? ''), [value])
