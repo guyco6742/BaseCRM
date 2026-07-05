@@ -36,3 +36,6 @@ dist-ssr
 
 # Superpowers subagent-driven-development scratch state
 .superpowers/
+
+# Git worktrees for isolated feature work
+.worktrees/

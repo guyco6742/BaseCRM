@@ -12,6 +12,9 @@ export default function LoginPage() {
   const [email, setEmail] = useState(location.state?.inviteEmail || '')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
+  const [message] = useState(
+    location.state?.resetSuccess ? 'הסיסמה עודכנה בהצלחה. התחברו עם הסיסמה החדשה.' : ''
+  )
   const [loading, setLoading] = useState(false)
 
   async function handleSubmit(e) {
@@ -59,17 +62,27 @@ export default function LoginPage() {
               autoComplete="email"
               data-testid="login-email"
             />
-            <Input
-              label="סיסמה"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              required
-              autoComplete="current-password"
-              data-testid="login-password"
-            />
+            <div>
+              <Input
+                label="סיסמה"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                required
+                autoComplete="current-password"
+                data-testid="login-password"
+              />
+              <Link
+                to="/forgot-password"
+                className="mt-1 inline-block text-sm text-accent hover:underline"
+                data-testid="login-forgot-password-link"
+              >
+                שכחתי סיסמה?
+              </Link>
+            </div>
 
+            {message && <p className="text-sm text-status-green" data-testid="login-reset-message">{message}</p>}
             {error && <p className="text-sm text-status-red" data-testid="login-error">{error}</p>}
 
             <Button type="submit" className="w-full" disabled={loading} data-testid="login-submit">
