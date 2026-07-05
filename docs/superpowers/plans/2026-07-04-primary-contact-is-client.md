@@ -11,7 +11,7 @@
 ## Global Constraints
 
 - Full spec: `docs/superpowers/specs/2026-07-04-primary-contact-is-client-design.md`.
-- This project is **not a git repository** (confirmed: `git rev-parse --is-inside-work-tree` fails with "not a git repository"). Skip all git steps — no `git init`, no commits. Where the task template says "Commit", instead just check the step's checkbox and move to the next step.
+- This project now has a git repository (initialized after this plan was first written; remote: `git@github.com:guyco6742/BaseCRM.git`, branch `main`, initial commit already pushed). Follow normal git steps — commit after each task as the task template specifies. Do not push to `origin` mid-task; pushing is a separate, explicit step the human partner controls.
 - SQL migrations in this project are applied manually by the user pasting the file into the Supabase SQL Editor (see `supabase/migration_007_security_fix_super_admin.sql`, `supabase/migration_008_tonika_status_fields.sql` for the established style/header comment convention). The agent has no `service_role` key and cannot run DDL directly — do not attempt to `psql` into the database.
 - Supabase project ref: `iezgyetfwgmlczcrnrvx`. `.env` has `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` — the anon key is safe to use for read-only REST smoke checks (RLS-protected) but must never be used to bypass RLS or embedded anywhere beyond what's already in `.env`.
 - Existing pattern to reuse verbatim: `EditableField` (local component in `src/pages/ClientPage.jsx`, draft-state + commit-on-blur input) and `patchClient(patch)` (optimistic update + Supabase `.update()` + `updated_at` bump), both already defined in that file — do not duplicate them.
@@ -66,9 +66,13 @@ curl -s "$URL/rest/v1/clients?select=id,contact_is_self,contact_name,contact_rol
 
 Expected: either `[]` or a JSON array of objects — not `{"code":"42703",...}`. If you get a `42703` error, the migration wasn't applied yet; go back to Step 2.
 
-- [ ] **Step 4: Mark task complete**
+- [ ] **Step 4: Commit**
 
-No git commit (this project has no `.git`). Check off this task in your tracking and move to Task 2.
+```bash
+cd "C:\Users\USER\Desktop\Caulde\BaseCrm"
+git add supabase/migration_009_primary_contact.sql
+git commit -m "feat: add primary-contact-is-client columns migration"
+```
 
 ---
 
@@ -199,6 +203,12 @@ This screen requires an authenticated super-admin session (`guyco42@gmail.com`) 
 5. Uncheck it once more (without retyping anything) — confirm the name/phone you entered in step 3 reappear in the fields (proves values were preserved in the DB, not cleared, while hidden).
 6. Confirm the "אנשי קשר נוספים" list below still works exactly as before (add/edit/archive a secondary contact) and is unaffected by any of the above.
 
-- [ ] **Step 5: Mark task complete**
+- [ ] **Step 5: Commit**
 
-No git commit (this project has no `.git`). Check off this task in your tracking. This completes the plan.
+```bash
+cd "C:\Users\USER\Desktop\Caulde\BaseCrm"
+git add src/pages/ClientPage.jsx
+git commit -m "feat: default primary contact to the client, reveal fields only when different"
+```
+
+This completes the plan.
