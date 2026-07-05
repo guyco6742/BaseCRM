@@ -130,6 +130,7 @@ export default function BoardKanban({
                       <span onClick={(e) => e.stopPropagation()} className="mt-1.5 inline-block">
                         <Popover
                           panelWidth={160}
+                          label="שנה שלב"
                           panel={(close) => (
                             <div className="space-y-1">
                               {labels.map((l) => (

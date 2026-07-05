@@ -15,6 +15,7 @@ function EditableStatusChip({ status, statuses, onSelect }) {
   return (
     <Popover
       panelWidth={160}
+      label="שנה שלב"
       panel={(close) => (
         <div className="space-y-1">
           {statuses.map((s) => (

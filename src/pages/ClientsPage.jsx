@@ -157,12 +157,16 @@ export default function ClientsPage() {
 
   // שינוי שלב מגרירה בקנבן — עדכון אופטימי
   async function setClientStatus(clientId, statusId) {
-    setClients((prev) => prev.map((c) => (c.id === clientId ? { ...c, status_id: statusId } : c)))
+    const prev = clients.find((c) => c.id === clientId)
+    setClients((cur) => cur.map((c) => (c.id === clientId ? { ...c, status_id: statusId } : c)))
     const { error } = await supabase
       .from('clients')
       .update({ status_id: statusId, updated_at: new Date().toISOString() })
       .eq('id', clientId)
-    if (error) setError('עדכון השלב נכשל.')
+    if (error) {
+      setClients((cur) => cur.map((c) => (c.id === clientId ? { ...c, status_id: prev?.status_id } : c)))
+      setError('עדכון השלב נכשל.')
+    }
   }
 
   // עדכון טלפון/אימייל מהטבלה — עדכון אופטימי

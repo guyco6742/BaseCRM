@@ -8,6 +8,7 @@ function StatusChipButton({ status, statuses, onSelect }) {
     <span onClick={(e) => e.stopPropagation()}>
       <Popover
         panelWidth={160}
+        label="שנה שלב"
         panel={(close) => (
           <div className="space-y-1">
             {statuses.map((s) => (
@@ -24,6 +25,15 @@ function StatusChipButton({ status, statuses, onSelect }) {
                 {s.label}
               </button>
             ))}
+            <button
+              onClick={() => {
+                onSelect(null)
+                close()
+              }}
+              className="block w-full rounded px-2 py-1.5 text-start text-sm text-text-muted hover:bg-surface-2"
+            >
+              נקה
+            </button>
           </div>
         )}
       >
