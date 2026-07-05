@@ -11,6 +11,7 @@ import EditColumnModal from '../components/board/EditColumnModal'
 import ImportClientsModal from '../components/crm/ImportClientsModal'
 import ClientsKanban from '../components/crm/ClientsKanban'
 import ClientsTable from '../components/crm/ClientsTable'
+import BoardCell from '../components/board/BoardCell'
 import { handleEnterAsTab } from '../lib/formNav'
 import {
   buildColumns,
@@ -50,7 +51,7 @@ export default function ClientsPage() {
   // מודלים
   const [addOpen, setAddOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
-  const [newClient, setNewClient] = useState({ name: '', phone: '', email: '' })
+  const [newClient, setNewClient] = useState({ name: '', phone: '', email: '', status_id: null, custom_values: {} })
   const [saving, setSaving] = useState(false)
   const [fieldsManagerOpen, setFieldsManagerOpen] = useState(false)
   const [addFieldOpen, setAddFieldOpen] = useState(false)
@@ -209,12 +210,13 @@ export default function ClientsPage() {
         name: newClient.name.trim(),
         phone: newClient.phone.trim() || null,
         email: newClient.email.trim() || null,
-        status_id: statuses[0]?.id ?? null, // ברירת מחדל: השלב הראשון בפייפליין
+        status_id: newClient.status_id ?? statuses[0]?.id ?? null, // ברירת מחדל: השלב הראשון בפייפליין
+        custom_values: newClient.custom_values || {},
         position: clients.length,
       })
       if (error) throw error
       setAddOpen(false)
-      setNewClient({ name: '', phone: '', email: '' })
+      setNewClient({ name: '', phone: '', email: '', status_id: null, custom_values: {} })
       await load()
     } catch {
       setError('יצירת הלקוח נכשלה.')
@@ -549,6 +551,50 @@ export default function ClientsPage() {
             onChange={(e) => setNewClient((c) => ({ ...c, email: e.target.value }))}
             data-testid="client-email-input"
           />
+
+          <label className="block">
+            <span className="mb-1 block text-sm text-text-muted">שלב</span>
+            <select
+              value={newClient.status_id ?? statuses[0]?.id ?? ''}
+              onChange={(e) => setNewClient((c) => ({ ...c, status_id: e.target.value || null }))}
+              className="w-full rounded-md border border-border bg-bg px-3 py-2 text-sm text-text outline-none focus:border-accent"
+              data-testid="client-status-select"
+            >
+              {statuses.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          {visibleFields
+            .filter((f) => f.type !== 'files')
+            .map((field) => (
+              <label key={field.id} className="block">
+                <span className="mb-1 block text-sm text-text-muted">{field.name}</span>
+                <div
+                  className="h-9 overflow-hidden rounded-md border border-border"
+                  data-testid={`client-field-input-${field.id}`}
+                >
+                  <BoardCell
+                    column={field}
+                    item={newClient}
+                    orgId={orgId}
+                    value={newClient.custom_values?.[field.id]}
+                    members={members}
+                    canEdit
+                    onChange={(v) =>
+                      setNewClient((c) => ({
+                        ...c,
+                        custom_values: { ...(c.custom_values || {}), [field.id]: v },
+                      }))
+                    }
+                  />
+                </div>
+              </label>
+            ))}
+
           <div className="flex justify-start gap-2">
             <Button type="submit" disabled={saving || !newClient.name.trim()} data-testid="client-create-submit">
               {saving ? 'יוצר...' : 'צור לקוח'}
