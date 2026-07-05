@@ -165,6 +165,36 @@ export default function ClientsPage() {
     if (error) setError('עדכון השלב נכשל.')
   }
 
+  // עדכון טלפון/אימייל מהטבלה — עדכון אופטימי
+  async function updateClientField(clientId, field, value) {
+    const prev = clients.find((c) => c.id === clientId)
+    setClients((cur) => cur.map((c) => (c.id === clientId ? { ...c, [field]: value } : c)))
+    const { error } = await supabase
+      .from('clients')
+      .update({ [field]: value, updated_at: new Date().toISOString() })
+      .eq('id', clientId)
+    if (error) {
+      setClients((cur) => cur.map((c) => (c.id === clientId ? { ...c, [field]: prev?.[field] } : c)))
+      setError('עדכון השדה נכשל.')
+    }
+  }
+
+  // עדכון שדה מותאם מהטבלה — עדכון אופטימי (כמו updateItemValue בבורד)
+  async function updateClientCustomValue(client, fieldId, value) {
+    const newValues = { ...(client.custom_values || {}), [fieldId]: value }
+    setClients((cur) => cur.map((c) => (c.id === client.id ? { ...c, custom_values: newValues } : c)))
+    const { error } = await supabase
+      .from('clients')
+      .update({ custom_values: newValues, updated_at: new Date().toISOString() })
+      .eq('id', client.id)
+    if (error) {
+      setClients((cur) =>
+        cur.map((c) => (c.id === client.id ? { ...c, custom_values: client.custom_values } : c))
+      )
+      setError('שמירת השינוי נכשלה.')
+    }
+  }
+
   // ---- לקוחות ----
   async function handleCreate(e) {
     e.preventDefault()
@@ -457,6 +487,9 @@ export default function ClientsPage() {
           sort={sort}
           onSort={applySort}
           onArchive={archiveClient}
+          onSetStatus={setClientStatus}
+          onSetField={updateClientField}
+          onSetCustomValue={updateClientCustomValue}
         />
       )}
 

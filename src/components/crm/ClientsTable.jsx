@@ -1,16 +1,50 @@
 import { Link } from 'react-router-dom'
-import BoardCell from '../board/BoardCell'
+import BoardCell, { LinkLikeCell } from '../board/BoardCell'
+import Popover from '../board/Popover'
 
-// תגית סטטוס (עמודת הבסיס) — עותק קטן כדי לא ליצור תלות מעגלית ב-ClientsPage.
-function StatusChip({ status }) {
-  if (!status) return <span className="text-sm text-text-dim">—</span>
-  return (
+// צ'יפ סטטוס לחיץ — פותח popover לבחירת שלב חדש
+function EditableStatusChip({ status, statuses, onSelect }) {
+  const cell = (
     <span
       className="inline-block rounded-full px-2.5 py-0.5 text-xs font-medium text-white"
-      style={{ backgroundColor: status.color }}
+      style={{ backgroundColor: status?.color || '#4a4f77' }}
     >
-      {status.label}
+      {status ? status.label : <span className="text-text-dim">—</span>}
     </span>
+  )
+  return (
+    <Popover
+      panelWidth={160}
+      panel={(close) => (
+        <div className="space-y-1">
+          {statuses.map((s) => (
+            <button
+              key={s.id}
+              onClick={() => {
+                onSelect(s.id)
+                close()
+              }}
+              className="block w-full rounded px-2 py-1.5 text-start text-sm font-medium text-white"
+              style={{ backgroundColor: s.color }}
+              data-testid={`status-option-${s.id}`}
+            >
+              {s.label}
+            </button>
+          ))}
+          <button
+            onClick={() => {
+              onSelect(null)
+              close()
+            }}
+            className="block w-full rounded px-2 py-1.5 text-start text-sm text-text-muted hover:bg-surface-2"
+          >
+            נקה
+          </button>
+        </div>
+      )}
+    >
+      {cell}
+    </Popover>
   )
 }
 
@@ -29,6 +63,9 @@ export default function ClientsTable({
   sort,
   onSort,
   onArchive,
+  onSetStatus,
+  onSetField,
+  onSetCustomValue,
 }) {
   const statusOf = (c) => statuses.find((s) => s.id === c.status_id)
 
@@ -45,18 +82,34 @@ export default function ClientsTable({
           </Link>
         )
       case 'status':
-        return <StatusChip status={statusOf(client)} />
+        return (
+          <EditableStatusChip
+            status={statusOf(client)}
+            statuses={statuses}
+            onSelect={(statusId) => onSetStatus(client.id, statusId)}
+          />
+        )
       case 'phone':
         return (
-          <span className="text-text-muted" dir="ltr">
-            {client.phone || '—'}
-          </span>
+          <div className="h-8 min-w-[7rem]" data-testid={`client-phone-${client.id}`}>
+            <LinkLikeCell
+              value={client.phone}
+              onChange={(v) => onSetField(client.id, 'phone', v)}
+              canEdit
+              kind="phone"
+            />
+          </div>
         )
       case 'email':
         return (
-          <span className="text-text-muted" dir="ltr">
-            {client.email || '—'}
-          </span>
+          <div className="h-8 min-w-[7rem]" data-testid={`client-email-${client.id}`}>
+            <LinkLikeCell
+              value={client.email}
+              onChange={(v) => onSetField(client.id, 'email', v)}
+              canEdit
+              kind="email"
+            />
+          </div>
         )
       case 'contacts':
         return <span className="text-text-dim">{client.contacts?.[0]?.count ?? 0}</span>
@@ -72,7 +125,8 @@ export default function ClientsTable({
               orgId={orgId}
               value={client.custom_values?.[col.field.id]}
               members={members}
-              canEdit={false}
+              canEdit
+              onChange={(v) => onSetCustomValue(client, col.field.id, v)}
             />
           </div>
         )
