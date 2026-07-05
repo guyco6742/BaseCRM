@@ -1,9 +1,60 @@
-import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import Popover from '../board/Popover'
+
+// צ'יפ סטטוס לחיץ בכרטיס — פותח popover לבחירת שלב חדש בלי לגרור
+function StatusChipButton({ status, statuses, onSelect }) {
+  return (
+    <span onClick={(e) => e.stopPropagation()}>
+      <Popover
+        panelWidth={160}
+        label="שנה שלב"
+        panel={(close) => (
+          <div className="space-y-1">
+            {statuses.map((s) => (
+              <button
+                key={s.id}
+                onClick={() => {
+                  onSelect(s.id)
+                  close()
+                }}
+                className="block w-full rounded px-2 py-1.5 text-start text-sm font-medium text-white"
+                style={{ backgroundColor: s.color }}
+                data-testid={`kanban-status-option-${s.id}`}
+              >
+                {s.label}
+              </button>
+            ))}
+            <button
+              onClick={() => {
+                onSelect(null)
+                close()
+              }}
+              className="block w-full rounded px-2 py-1.5 text-start text-sm text-text-muted hover:bg-surface-2"
+            >
+              נקה
+            </button>
+          </div>
+        )}
+      >
+        <span
+          className="mt-1 inline-block rounded-full px-2 py-0.5 text-xs font-medium text-white"
+          style={{ backgroundColor: status?.color || '#4a4f77' }}
+          data-testid="kanban-card-status-chip"
+        >
+          {status ? status.label : 'ללא שלב'}
+        </span>
+      </Popover>
+    </span>
+  )
+}
 
 // תצוגת קנבן — עמודה לכל שלב בפייפליין, גרירת לקוח בין עמודות משנה את השלב
 export default function ClientsKanban({ clients, statuses, orgId, onSetStatus }) {
+  const navigate = useNavigate()
   const [dragOverCol, setDragOverCol] = useState(null)
+  // מבחין בין גרירה ללחיצה — כדי שסיום גרירה לא ינווט לעמוד הלקוח
+  const draggingRef = useRef(false)
 
   // עמודה לכל שלב פעיל + עמודת "ללא שלב" אם יש לקוחות בלי סטטוס
   const noStatusClients = clients.filter((c) => !c.status_id || !statuses.some((s) => s.id === c.status_id))
@@ -54,12 +105,26 @@ export default function ClientsKanban({ clients, statuses, orgId, onSetStatus })
             {/* כרטיסי לקוח */}
             <div className="min-h-[80px] space-y-2 p-2">
               {list.map((c) => (
-                <Link
+                <div
                   key={c.id}
-                  to={`/org/${orgId}/clients/${c.id}`}
                   draggable
-                  onDragStart={(e) => e.dataTransfer.setData('clientId', c.id)}
-                  className="block cursor-grab rounded-md border border-border bg-surface p-3 hover:border-accent active:cursor-grabbing"
+                  role="link"
+                  tabIndex={0}
+                  onDragStart={(e) => {
+                    draggingRef.current = true
+                    e.dataTransfer.setData('clientId', c.id)
+                  }}
+                  onDragEnd={() => setTimeout(() => (draggingRef.current = false), 100)}
+                  onClick={() => {
+                    if (!draggingRef.current) navigate(`/org/${orgId}/clients/${c.id}`)
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      navigate(`/org/${orgId}/clients/${c.id}`)
+                    }
+                  }}
+                  className="block cursor-grab rounded-md border border-border bg-surface p-3 hover:border-accent focus:outline-none focus:ring-2 focus:ring-accent active:cursor-grabbing"
                   data-testid={`kanban-card-${c.id}`}
                 >
                   <div className="truncate text-sm font-medium text-text">{c.name}</div>
@@ -71,7 +136,12 @@ export default function ClientsKanban({ clients, statuses, orgId, onSetStatus })
                   {(c.contacts?.[0]?.count ?? 0) > 0 && (
                     <div className="mt-1 text-xs text-text-dim">👤 {c.contacts[0].count} אנשי קשר</div>
                   )}
-                </Link>
+                  <StatusChipButton
+                    status={statuses.find((s) => s.id === c.status_id)}
+                    statuses={statuses}
+                    onSelect={(statusId) => onSetStatus(c.id, statusId)}
+                  />
+                </div>
               ))}
               {list.length === 0 && (
                 <p className="py-4 text-center text-xs text-text-dim">גררו לקוח לכאן</p>

@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
 // בורר שנפתח דרך portal עם מיקום fixed — לא נחתך ע"י מיכלי overflow של הטבלה
-export default function Popover({ children, panel, panelWidth = 180 }) {
+export default function Popover({ children, panel, panelWidth = 180, label }) {
   const [open, setOpen] = useState(false)
   const [pos, setPos] = useState(null)
   const triggerRef = useRef(null)
@@ -24,7 +24,15 @@ export default function Popover({ children, panel, panelWidth = 180 }) {
 
   return (
     <>
-      <button ref={triggerRef} type="button" onClick={toggle} className="h-full w-full cursor-pointer">
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={toggle}
+        className="h-full w-full cursor-pointer"
+        aria-haspopup="true"
+        aria-expanded={open}
+        aria-label={label}
+      >
         {children}
       </button>
       {open &&

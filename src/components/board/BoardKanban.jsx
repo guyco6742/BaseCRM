@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import Avatar from '../ui/Avatar'
+import Popover from './Popover'
 
 // תצוגת קנבן לבורד — עמודה לכל תווית בעמודת הסטטוס הנבחרת.
 // גרירת כרטיס בין עמודות משנה את הסטטוס של הפריט.
@@ -87,6 +88,7 @@ export default function BoardKanban({
               {list.map((item) => {
                 const grp = groupOf(item)
                 const assignee = assigneeOf(item)
+                const currentLabel = labels.find((l) => l.id === item.values?.[column.id])
                 return (
                   <div
                     key={item.id}
@@ -99,7 +101,15 @@ export default function BoardKanban({
                     onClick={() => {
                       if (!draggingRef.current) onOpenItem?.(item)
                     }}
-                    className={`cursor-pointer rounded-md border border-border bg-surface p-3 hover:border-accent ${
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault()
+                        onOpenItem?.(item)
+                      }
+                    }}
+                    className={`cursor-pointer rounded-md border border-border bg-surface p-3 hover:border-accent focus:outline-none focus:ring-2 focus:ring-accent ${
                       canEdit ? 'active:cursor-grabbing' : ''
                     }`}
                     data-testid={`board-kanban-card-${item.id}`}
@@ -115,6 +125,49 @@ export default function BoardKanban({
                         <span className="h-2 w-2 rounded-sm" style={{ backgroundColor: grp.color }} />
                         <span className="truncate">{grp.name}</span>
                       </div>
+                    )}
+                    {canEdit && (
+                      <span onClick={(e) => e.stopPropagation()} className="mt-1.5 inline-block">
+                        <Popover
+                          panelWidth={160}
+                          label="שנה שלב"
+                          panel={(close) => (
+                            <div className="space-y-1">
+                              {labels.map((l) => (
+                                <button
+                                  key={l.id}
+                                  onClick={() => {
+                                    onSetStatus(item, l.id)
+                                    close()
+                                  }}
+                                  className="block w-full rounded px-2 py-1.5 text-start text-sm font-medium text-white"
+                                  style={{ backgroundColor: l.color }}
+                                  data-testid={`board-kanban-status-option-${l.id}`}
+                                >
+                                  {l.label}
+                                </button>
+                              ))}
+                              <button
+                                onClick={() => {
+                                  onSetStatus(item, null)
+                                  close()
+                                }}
+                                className="block w-full rounded px-2 py-1.5 text-start text-sm text-text-muted hover:bg-surface-2"
+                              >
+                                נקה
+                              </button>
+                            </div>
+                          )}
+                        >
+                          <span
+                            className="inline-block rounded-full px-2 py-0.5 text-xs font-medium text-white"
+                            style={{ backgroundColor: currentLabel?.color || '#4a4f77' }}
+                            data-testid={`board-kanban-status-chip-${item.id}`}
+                          >
+                            {currentLabel ? currentLabel.label : 'ללא סטטוס'}
+                          </span>
+                        </Popover>
+                      </span>
                     )}
                   </div>
                 )
