@@ -5,6 +5,7 @@ import Layout from './components/Layout'
 import OrgLayout from './components/OrgLayout'
 import LoginPage from './pages/LoginPage'
 import SignupPage from './pages/SignupPage'
+import ForgotPasswordPage from './pages/ForgotPasswordPage'
 import AcceptInvitePage from './pages/AcceptInvitePage'
 import DashboardPage from './pages/DashboardPage'
 import AdminPage from './pages/AdminPage'
@@ -22,6 +23,7 @@ export default function App() {
       {/* ציבורי */}
       <Route path="/login" element={<LoginPage />} />
       <Route path="/signup" element={<SignupPage />} />
+      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/accept-invite" element={<AcceptInvitePage />} />
 
       {/* מוגן */}
