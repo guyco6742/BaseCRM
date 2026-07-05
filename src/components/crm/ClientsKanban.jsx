@@ -98,6 +98,8 @@ export default function ClientsKanban({ clients, statuses, orgId, onSetStatus })
                 <div
                   key={c.id}
                   draggable
+                  role="link"
+                  tabIndex={0}
                   onDragStart={(e) => {
                     draggingRef.current = true
                     e.dataTransfer.setData('clientId', c.id)
@@ -106,7 +108,13 @@ export default function ClientsKanban({ clients, statuses, orgId, onSetStatus })
                   onClick={() => {
                     if (!draggingRef.current) navigate(`/org/${orgId}/clients/${c.id}`)
                   }}
-                  className="block cursor-grab rounded-md border border-border bg-surface p-3 hover:border-accent active:cursor-grabbing"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      navigate(`/org/${orgId}/clients/${c.id}`)
+                    }
+                  }}
+                  className="block cursor-grab rounded-md border border-border bg-surface p-3 hover:border-accent focus:outline-none focus:ring-2 focus:ring-accent active:cursor-grabbing"
                   data-testid={`kanban-card-${c.id}`}
                 >
                   <div className="truncate text-sm font-medium text-text">{c.name}</div>
