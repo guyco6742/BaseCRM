@@ -14,7 +14,7 @@
   --color-text-dim: #72779a;    /* טקסט עמום */
 
   --color-accent: #4f5bd5;      /* accent מלוטש (היה #0073ea) */
-  --color-accent-hover: #0060c2;
+  --color-accent-hover: color-mix(in srgb, var(--color-accent) 85%, black);
   --color-accent-soft: color-mix(in srgb, var(--color-accent) 15%, transparent);
   --color-accent-weak: color-mix(in srgb, var(--color-accent) 48%, var(--color-surface));
 
