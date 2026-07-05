@@ -35,6 +35,7 @@ create table if not exists public.organizations (
   slug text unique,
   logo_url text,
   is_archived boolean not null default false,
+  features jsonb not null default '{}'::jsonb, -- דגלי תכונות פר-ארגון, למשל {"send_contract": true}
   created_by uuid references public.profiles(id) on delete set null,
   created_at timestamptz not null default now()
 );
