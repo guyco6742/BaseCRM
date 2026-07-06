@@ -26,13 +26,14 @@ export function OrgProvider({ children }) {
   }, [orgId])
 
   // טוען את המועדף האישי של המשתמש לארגון הזה (בורד או עמוד לקוחות), אם קיים ותקף
-  const loadFavorite = useCallback(async () => {
+  const loadFavorite = useCallback(async (isActive) => {
     const { data } = await supabase
       .from('user_favorites')
       .select('favorite_type, board_id, boards(is_archived)')
       .eq('org_id', orgId)
       .eq('user_id', user.id)
       .maybeSingle()
+    if (!isActive()) return
     if (!data) {
       setFavoriteState(null)
       return
@@ -98,7 +99,7 @@ export function OrgProvider({ children }) {
         if (!active) return
         setOrg(orgData)
         setRole(membership?.role ?? (isSuperAdmin ? 'admin' : null))
-        await loadFavorite()
+        await loadFavorite(() => active)
       } finally {
         if (active) setLoading(false)
       }
