@@ -1477,3 +1477,13 @@ ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TAB
 
 
 
+
+-- ----------------------------------------------------------------------------
+-- Cross-schema trigger on auth.users (not captured by `db dump` of public).
+-- Auto-creates a public.profiles row when a new auth user signs up.
+-- Recreated so a fresh environment built from this baseline is complete.
+-- ----------------------------------------------------------------------------
+DROP TRIGGER IF EXISTS "on_auth_user_created" ON "auth"."users";
+CREATE TRIGGER "on_auth_user_created"
+  AFTER INSERT ON "auth"."users"
+  FOR EACH ROW EXECUTE FUNCTION "public"."handle_new_user"();
