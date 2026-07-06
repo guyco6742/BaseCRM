@@ -13,7 +13,7 @@ import LeadSourcesManager from '../components/crm/LeadSourcesManager'
 
 export default function OrgSettingsPage() {
   const { orgId, org, isAdmin, loading: orgLoading, refreshOrg } = useOrg()
-  const { user } = useAuth()
+  const { user, isSuperAdmin } = useAuth()
   const [members, setMembers] = useState([])
   const [invites, setInvites] = useState([])
   const [loading, setLoading] = useState(true)
@@ -63,15 +63,26 @@ export default function OrgSettingsPage() {
     }
   }
 
-  async function removeMember(member) {
-    if (!window.confirm(`להסיר את ${member.profiles?.full_name || member.profiles?.email} מהארגון?`))
+  async function deleteUser(member) {
+    const label = member.profiles?.full_name || member.profiles?.email
+    if (
+      !window.confirm(
+        `למחוק את ${label}? אם זה הארגון היחיד של המשתמש — החשבון יימחק לצמיתות. אחרת המשתמש יוסר מהארגון הזה בלבד.`
+      )
+    )
       return
     try {
-      const { error } = await supabase.from('memberships').delete().eq('id', member.id)
+      const { data, error } = await supabase.rpc('delete_user', {
+        p_user_id: member.user_id,
+        p_org_id: orgId,
+      })
       if (error) throw error
+      // data === 'account_deleted' | 'removed_from_org'
       await load()
-    } catch {
-      setError('הסרת המשתמש נכשלה.')
+    } catch (e) {
+      setError(e.message === 'only super admin can delete an admin'
+        ? 'רק סופר-אדמין יכול למחוק מנהל/ת.'
+        : 'מחיקת המשתמש נכשלה.')
     }
   }
 
@@ -148,13 +159,13 @@ export default function OrgSettingsPage() {
                       <option value="member">עובד/ת</option>
                       <option value="admin">מנהל/ת</option>
                     </select>
-                    {m.user_id !== user.id && (
+                    {m.user_id !== user.id && (m.role === 'member' || isSuperAdmin) && (
                       <button
-                        onClick={() => removeMember(m)}
+                        onClick={() => deleteUser(m)}
                         className="text-sm text-text-dim hover:text-status-red"
-                        data-testid={`member-remove-${m.user_id}`}
+                        data-testid={`member-delete-${m.user_id}`}
                       >
-                        הסר
+                        מחק
                       </button>
                     )}
                   </div>
