@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, useCallback } from 'react'
+import { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from './AuthContext'
@@ -64,7 +64,7 @@ export function OrgProvider({ children }) {
     }
   }, [orgId, user.id, isSuperAdmin])
 
-  const value = {
+  const value = useMemo(() => ({
     orgId,
     org,
     role,
@@ -74,7 +74,7 @@ export function OrgProvider({ children }) {
     structureVersion,
     refreshStructure,
     refreshOrg,
-  }
+  }), [orgId, org, role, isSuperAdmin, loading, notFound, structureVersion, refreshStructure, refreshOrg])
 
   return <OrgContext.Provider value={value}>{children}</OrgContext.Provider>
 }
