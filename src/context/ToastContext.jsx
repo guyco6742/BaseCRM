@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 
 const ToastContext = createContext(null)
 
@@ -18,16 +18,32 @@ const TYPE_ICON_COLOR = {
 export function ToastProvider({ children }) {
   const [toasts, setToasts] = useState([])
   const idRef = useRef(0)
+  const timersRef = useRef(new Map())
 
   const dismiss = useCallback((id) => {
+    const timerId = timersRef.current.get(id)
+    if (timerId !== undefined) {
+      clearTimeout(timerId)
+      timersRef.current.delete(id)
+    }
     setToasts((cur) => cur.filter((t) => t.id !== id))
   }, [])
 
   const toast = useCallback((message, type = 'success') => {
     const id = ++idRef.current
     setToasts((cur) => [...cur, { id, message, type }])
-    setTimeout(() => dismiss(id), 4000)
+    const timerId = setTimeout(() => dismiss(id), 4000)
+    timersRef.current.set(id, timerId)
   }, [dismiss])
+
+  useEffect(() => {
+    return () => {
+      for (const timerId of timersRef.current.values()) {
+        clearTimeout(timerId)
+      }
+      timersRef.current.clear()
+    }
+  }, [])
 
   const value = useMemo(() => ({ toast }), [toast])
 

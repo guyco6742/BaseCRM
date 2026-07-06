@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import Modal from '../components/ui/Modal'
 import Button from '../components/ui/Button'
 
@@ -25,6 +25,13 @@ export function ConfirmProvider({ children }) {
     resolveRef.current?.(result)
     resolveRef.current = null
     setState(null)
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      resolveRef.current?.(false)
+      resolveRef.current = null
+    }
   }, [])
 
   const value = useMemo(() => ({ confirm }), [confirm])
