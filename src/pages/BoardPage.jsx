@@ -13,8 +13,9 @@ import AddColumnModal from '../components/board/AddColumnModal'
 import ColumnManagerModal from '../components/board/ColumnManagerModal'
 import EditColumnModal from '../components/board/EditColumnModal'
 import ArchivedModal from '../components/board/ArchivedModal'
-import { LABEL_COLORS } from '../lib/columnTypes'
+import { LABEL_COLORS, formatColumnValue } from '../lib/columnTypes'
 import { handleEnterAsTab } from '../lib/formNav'
+import { exportRowsToCSV, downloadCSV } from '../lib/csv'
 
 export default function BoardPage() {
   const { boardId } = useParams()
@@ -266,6 +267,23 @@ export default function BoardPage() {
   const kanbanColumn = statusColumns.find((c) => c.id === kanbanColId) || statusColumns[0]
   const personColumn = orderedColumns.find((c) => c.type === 'person')
 
+  // ייצוא הבורד (קבוצות פעילות + עמודות מוצגות) ל-CSV
+  function exportCSV() {
+    const headers = ['קבוצה', 'שם', ...visibleColumns.map((c) => c.name)]
+    const ctx = { members, clients }
+    const rows = groups.flatMap((group) =>
+      items
+        .filter((i) => i.group_id === group.id)
+        .map((item) => [
+          group.name,
+          item.name,
+          ...visibleColumns.map((col) => formatColumnValue(col, item.values?.[col.id], ctx)),
+        ])
+    )
+    const csv = exportRowsToCSV(headers, rows)
+    downloadCSV(`${board?.name || 'בורד'}-${new Date().toISOString().slice(0, 10)}.csv`, csv)
+  }
+
   return (
     <div className="p-6" data-testid="board-page">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
@@ -306,22 +324,27 @@ export default function BoardPage() {
             </select>
           )}
         </div>
-        {isAdmin && (
-          <div className="flex gap-2">
-            <Button variant="ghost" onClick={() => setArchivedOpen(true)} data-testid="board-archived-btn">
-              🗄 מושבתים
-            </Button>
-            <Button variant="ghost" onClick={() => setColumnManagerOpen(true)} data-testid="board-columns-btn">
-              ⚙ עמודות
-            </Button>
-            <Button variant="secondary" onClick={() => setAddColumnOpen(true)} data-testid="board-add-column-btn">
-              + עמודה
-            </Button>
-            <Button onClick={() => setAddGroupOpen(true)} data-testid="board-add-group-btn">
-              + קבוצה
-            </Button>
-          </div>
-        )}
+        <div className="flex gap-2">
+          <Button variant="secondary" onClick={exportCSV} data-testid="board-export-btn">
+            ⬇ ייצוא CSV
+          </Button>
+          {isAdmin && (
+            <>
+              <Button variant="ghost" onClick={() => setArchivedOpen(true)} data-testid="board-archived-btn">
+                🗄 מושבתים
+              </Button>
+              <Button variant="ghost" onClick={() => setColumnManagerOpen(true)} data-testid="board-columns-btn">
+                ⚙ עמודות
+              </Button>
+              <Button variant="secondary" onClick={() => setAddColumnOpen(true)} data-testid="board-add-column-btn">
+                + עמודה
+              </Button>
+              <Button onClick={() => setAddGroupOpen(true)} data-testid="board-add-group-btn">
+                + קבוצה
+              </Button>
+            </>
+          )}
+        </div>
       </div>
 
       {error && <p className="mb-4 text-status-red">{error}</p>}
