@@ -152,7 +152,12 @@ export default function OrgSettingsPage() {
                     <select
                       value={m.role}
                       onChange={(e) => changeRole(m, e.target.value)}
-                      disabled={m.user_id === user.id}
+                      disabled={m.user_id === user.id || (m.role === 'admin' && !isSuperAdmin)}
+                      title={
+                        m.role === 'admin' && !isSuperAdmin
+                          ? 'רק סופר-אדמין יכול לשנות תפקיד של מנהל/ת'
+                          : undefined
+                      }
                       className="rounded-md border border-border bg-bg px-2 py-1 text-sm text-text outline-none focus:border-accent disabled:opacity-50"
                       data-testid={`member-role-${m.user_id}`}
                     >
