@@ -53,8 +53,8 @@ export function OrgProvider({ children }) {
   const setFavorite = useCallback(
     async (next) => {
       if (next === null) {
-        await supabase.from('user_favorites').delete().eq('org_id', orgId).eq('user_id', user.id)
-        setFavoriteState(null)
+        const { error } = await supabase.from('user_favorites').delete().eq('org_id', orgId).eq('user_id', user.id)
+        if (!error) setFavoriteState(null)
         return
       }
       const row = {
