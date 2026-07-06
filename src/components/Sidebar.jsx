@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, NavLink, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useOrg } from '../context/OrgContext'
+import { useAuth } from '../context/AuthContext'
 import OrgLogo from './OrgLogo'
 
 const MIN_WIDTH = 180
@@ -10,10 +11,13 @@ const STORAGE_KEY = 'basecrm.sidebarWidth'
 
 export default function Sidebar() {
   const { orgId, org, isAdmin, structureVersion } = useOrg()
+  const { user, isSuperAdmin } = useAuth()
   const { boardId } = useParams()
   const [workspaces, setWorkspaces] = useState([])
   const [boards, setBoards] = useState([])
   const [loading, setLoading] = useState(true)
+  // סופר-אדמין מנווט בין כל הארגונים; משתמש רגיל רואה את הקישור רק אם הוא חבר ביותר מארגון אחד
+  const [showAllOrgsLink, setShowAllOrgsLink] = useState(isSuperAdmin)
 
   // רוחב הפאנל — נשמר ב-localStorage ומשוחזר בין ביקורים
   const [width, setWidth] = useState(() => {
@@ -46,6 +50,25 @@ export default function Sidebar() {
       window.removeEventListener('mouseup', onUp)
     }
   }, [resizing])
+
+  // כמה ארגונים המשתמש חבר בהם — קובע אם להציג את הקישור "כל הארגונים"
+  useEffect(() => {
+    if (isSuperAdmin) {
+      setShowAllOrgsLink(true)
+      return
+    }
+    let active = true
+    supabase
+      .from('memberships')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .then(({ count }) => {
+        if (active) setShowAllOrgsLink((count ?? 0) > 1)
+      })
+    return () => {
+      active = false
+    }
+  }, [user.id, isSuperAdmin])
 
   useEffect(() => {
     let active = true
@@ -86,13 +109,15 @@ export default function Sidebar() {
         }`}
       />
       <div className="border-b border-border p-4">
-        <Link
-          to="/"
-          className="text-xs text-text-dim hover:text-text-muted"
-          data-testid="sidebar-all-orgs-link"
-        >
-          → כל הארגונים
-        </Link>
+        {showAllOrgsLink && (
+          <Link
+            to="/"
+            className="text-xs text-text-dim hover:text-text-muted"
+            data-testid="sidebar-all-orgs-link"
+          >
+            → כל הארגונים
+          </Link>
+        )}
         <div className="mt-1 flex items-center gap-2">
           <OrgLogo org={org} size={32} testid="sidebar-org-logo" />
           <h2 className="truncate text-lg font-bold text-text" title={org?.name} data-testid="sidebar-org-name">
