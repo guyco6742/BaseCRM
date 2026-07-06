@@ -60,8 +60,9 @@ export default function Sidebar() {
     let active = true
     supabase
       .from('memberships')
-      .select('id', { count: 'exact', head: true })
+      .select('id, organizations!inner(is_archived)', { count: 'exact', head: true })
       .eq('user_id', user.id)
+      .eq('organizations.is_archived', false)
       .then(({ count }) => {
         if (active) setShowAllOrgsLink((count ?? 0) > 1)
       })
