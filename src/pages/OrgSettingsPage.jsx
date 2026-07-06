@@ -80,9 +80,13 @@ export default function OrgSettingsPage() {
       // data === 'account_deleted' | 'removed_from_org'
       await load()
     } catch (e) {
-      setError(e.message === 'only super admin can delete an admin'
-        ? 'רק סופר-אדמין יכול למחוק מנהל/ת.'
-        : 'מחיקת המשתמש נכשלה.')
+      const messages = {
+        'only super admin can delete an admin': 'רק סופר-אדמין יכול למחוק מנהל/ת.',
+        'cannot delete yourself': 'לא ניתן למחוק את החשבון שלך.',
+        'cannot delete a super admin': 'לא ניתן למחוק סופר-אדמין.',
+        'user is not a member of this org': 'המשתמש כבר אינו חבר בארגון זה.',
+      }
+      setError(messages[e.message] || 'מחיקת המשתמש נכשלה.')
     }
   }
 
