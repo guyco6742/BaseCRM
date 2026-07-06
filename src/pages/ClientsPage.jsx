@@ -19,7 +19,9 @@ import {
   matchesFilters,
   filterOptionsFor,
   describeFilter,
+  getCellText,
 } from '../lib/clientTable'
+import { exportRowsToCSV, downloadCSV } from '../lib/csv'
 
 export default function ClientsPage() {
   const { orgId, isAdmin } = useOrg()
@@ -123,6 +125,14 @@ export default function ClientsPage() {
       .some((v) => v.toLowerCase().includes(q))
   })
   const sorted = sortClients(filtered, sort, ctx)
+
+  // ייצוא הרשימה המוצגת כרגע (אחרי חיפוש/סינון/מיון) ל-CSV
+  function exportCSV() {
+    const headers = columns.map((c) => c.label)
+    const rows = sorted.map((c) => columns.map((col) => getCellText(c, col, ctx)))
+    const csv = exportRowsToCSV(headers, rows)
+    downloadCSV(`לקוחות-${new Date().toISOString().slice(0, 10)}.csv`, csv)
+  }
 
   // ---- מיון וסינון (פקדי סרגל הכלים) ----
   function applySort(key) {
@@ -299,6 +309,9 @@ export default function ClientsPage() {
           )}
           <Button variant="secondary" onClick={() => setImportOpen(true)} data-testid="clients-import-btn">
             ⬆ ייבוא CSV
+          </Button>
+          <Button variant="secondary" onClick={exportCSV} data-testid="clients-export-btn">
+            ⬇ ייצוא CSV
           </Button>
           <Button onClick={() => setAddOpen(true)} data-testid="clients-new-btn">
             + לקוח חדש

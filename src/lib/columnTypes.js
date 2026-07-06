@@ -51,6 +51,37 @@ export const LABEL_COLORS = [
   '#c4c4c4', // אפור
 ]
 
+// טקסט תצוגה לערך עמודה בבורד (לפי סוג) — משמש לייצוא CSV.
+// ctx: { members, clients }
+export function formatColumnValue(column, value, ctx = {}) {
+  if (value == null || value === '') return ''
+  const s = column.settings || {}
+  switch (column.type) {
+    case 'created_at':
+      return formatDateTime(value)
+    case 'client': {
+      const c = (ctx.clients || []).find((x) => x.id === value)
+      return c?.name || ''
+    }
+    case 'files':
+      return Array.isArray(value) ? value.map((f) => f.name).join('; ') : ''
+    case 'checkbox':
+      return value ? 'כן' : 'לא'
+    case 'status':
+      return (s.labels || []).find((l) => l.id === value)?.label || ''
+    case 'dropdown':
+      return (s.options || []).find((o) => o.id === value)?.label || ''
+    case 'person': {
+      const m = (ctx.members || []).find((x) => x.user_id === value)
+      return m?.full_name || m?.email || ''
+    }
+    case 'number':
+      return `${value}${s.unit ? ' ' + s.unit : ''}`
+    default:
+      return String(value)
+  }
+}
+
 // ברירות מחדל ל-settings לפי סוג עמודה חדשה
 export function defaultSettings(type) {
   switch (type) {
