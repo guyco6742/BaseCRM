@@ -1,10 +1,12 @@
 import { useEffect, useRef } from 'react'
 
-const FOCUSABLE = 'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])'
+const FOCUSABLE = 'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
 
 export default function Modal({ open, onClose, title, children, footer, size = 'md', testid }) {
   const panelRef = useRef(null)
   const prevFocusRef = useRef(null)
+  const onCloseRef = useRef(onClose)
+  onCloseRef.current = onClose
 
   useEffect(() => {
     if (!open) return
@@ -18,7 +20,7 @@ export default function Modal({ open, onClose, title, children, footer, size = '
 
     const onKey = (e) => {
       if (e.key === 'Escape') {
-        onClose?.()
+        onCloseRef.current?.()
         return
       }
       if (e.key !== 'Tab' || !panelRef.current) return
@@ -39,7 +41,7 @@ export default function Modal({ open, onClose, title, children, footer, size = '
       window.removeEventListener('keydown', onKey)
       prevFocusRef.current?.focus?.()
     }
-  }, [open, onClose])
+  }, [open])
 
   if (!open) return null
 
