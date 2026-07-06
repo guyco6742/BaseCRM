@@ -15,6 +15,7 @@ export function OrgProvider({ children }) {
   const [notFound, setNotFound] = useState(false)
   // מונה שמאלץ רענון של מבנה הארגון (וורקספייסים/בורדים) בסרגל הצד ובדפים
   const [structureVersion, setStructureVersion] = useState(0)
+  const [favorite, setFavoriteState] = useState(null)
 
   const refreshStructure = useCallback(() => setStructureVersion((v) => v + 1), [])
 
@@ -23,6 +24,49 @@ export function OrgProvider({ children }) {
     const { data } = await supabase.from('organizations').select('*').eq('id', orgId).maybeSingle()
     if (data) setOrg(data)
   }, [orgId])
+
+  // טוען את המועדף האישי של המשתמש לארגון הזה (בורד או עמוד לקוחות), אם קיים ותקף
+  const loadFavorite = useCallback(async () => {
+    const { data } = await supabase
+      .from('user_favorites')
+      .select('favorite_type, board_id, boards(is_archived)')
+      .eq('org_id', orgId)
+      .eq('user_id', user.id)
+      .maybeSingle()
+    if (!data) {
+      setFavoriteState(null)
+      return
+    }
+    if (data.favorite_type === 'clients') {
+      setFavoriteState({ type: 'clients' })
+      return
+    }
+    if (data.favorite_type === 'board' && data.boards && !data.boards.is_archived) {
+      setFavoriteState({ type: 'board', boardId: data.board_id })
+      return
+    }
+    setFavoriteState(null)
+  }, [orgId, user.id])
+
+  // next = null (מבטל), { type: 'clients' }, או { type: 'board', boardId }
+  const setFavorite = useCallback(
+    async (next) => {
+      if (next === null) {
+        await supabase.from('user_favorites').delete().eq('org_id', orgId).eq('user_id', user.id)
+        setFavoriteState(null)
+        return
+      }
+      const row = {
+        user_id: user.id,
+        org_id: orgId,
+        favorite_type: next.type,
+        board_id: next.type === 'board' ? next.boardId : null,
+      }
+      const { error } = await supabase.from('user_favorites').upsert(row, { onConflict: 'user_id,org_id' })
+      if (!error) setFavoriteState(next)
+    },
+    [orgId, user.id]
+  )
 
   useEffect(() => {
     let active = true
@@ -54,6 +98,7 @@ export function OrgProvider({ children }) {
         if (!active) return
         setOrg(orgData)
         setRole(membership?.role ?? (isSuperAdmin ? 'admin' : null))
+        await loadFavorite()
       } finally {
         if (active) setLoading(false)
       }
@@ -62,7 +107,7 @@ export function OrgProvider({ children }) {
     return () => {
       active = false
     }
-  }, [orgId, user.id, isSuperAdmin])
+  }, [orgId, user.id, isSuperAdmin, loadFavorite])
 
   const value = {
     orgId,
@@ -74,6 +119,8 @@ export function OrgProvider({ children }) {
     structureVersion,
     refreshStructure,
     refreshOrg,
+    favorite,
+    setFavorite,
   }
 
   return <OrgContext.Provider value={value}>{children}</OrgContext.Provider>
