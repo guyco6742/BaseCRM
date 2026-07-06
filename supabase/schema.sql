@@ -342,7 +342,15 @@ create policy memberships_insert on public.memberships for insert with check (
   )
 );
 drop policy if exists memberships_update on public.memberships;
-create policy memberships_update on public.memberships for update using (public.is_org_admin(org_id));
+create policy memberships_update on public.memberships for update
+using (
+  public.is_super_admin()
+  or (public.is_org_admin(org_id) and role = 'member')
+)
+with check (
+  public.is_super_admin()
+  or public.is_org_admin(org_id)
+);
 drop policy if exists memberships_delete on public.memberships;
 create policy memberships_delete on public.memberships for delete using (
   public.is_super_admin()
