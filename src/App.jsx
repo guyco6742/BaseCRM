@@ -10,7 +10,7 @@ import ResetPasswordPage from './pages/ResetPasswordPage'
 import AcceptInvitePage from './pages/AcceptInvitePage'
 import DashboardPage from './pages/DashboardPage'
 import AdminPage from './pages/AdminPage'
-import WorkspacesPage from './pages/WorkspacesPage'
+import OrgHomePage from './pages/OrgHomePage'
 import BoardsPage from './pages/BoardsPage'
 import BoardPage from './pages/BoardPage'
 import ClientsPage from './pages/ClientsPage'
@@ -42,7 +42,7 @@ export default function App() {
 
         {/* מרחב הארגון — עם סרגל צד וקונטקסט ארגון */}
         <Route path="/org/:orgId" element={<OrgLayout />}>
-          <Route index element={<WorkspacesPage />} />
+          <Route index element={<OrgHomePage />} />
           <Route path="workspace/:wsId" element={<BoardsPage />} />
           <Route path="board/:boardId" element={<BoardPage />} />
           <Route path="clients" element={<ClientsPage />} />
