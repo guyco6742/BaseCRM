@@ -37,7 +37,13 @@ export default function AdminPage() {
         .order('created_at', { ascending: false })
       if (error) throw error
       setOrgs(data || [])
+    } catch {
+      setError('טעינת הארגונים נכשלה.')
+    } finally {
+      setLoading(false)
+    }
 
+    try {
       const { data: uData, error: uErr } = await supabase
         .from('profiles')
         .select('id, full_name, email, is_super_admin, memberships(count)')
@@ -45,9 +51,7 @@ export default function AdminPage() {
       if (uErr) throw uErr
       setUsers((uData || []).filter((u) => !u.is_super_admin))
     } catch {
-      setError('טעינת הארגונים נכשלה.')
-    } finally {
-      setLoading(false)
+      setError('טעינת המשתמשים נכשלה.')
     }
   }
 
@@ -136,8 +140,13 @@ export default function AdminPage() {
       const { error } = await supabase.rpc('delete_user_account', { p_user_id: u.id })
       if (error) throw error
       await load()
-    } catch {
-      setError('מחיקת החשבון נכשלה.')
+    } catch (e) {
+      const messages = {
+        'not authorized': 'אין הרשאה למחוק משתמש זה.',
+        'cannot delete yourself': 'לא ניתן למחוק את החשבון שלך.',
+        'cannot delete a super admin': 'לא ניתן למחוק סופר-אדמין.',
+      }
+      setError(messages[e.message] || 'מחיקת החשבון נכשלה.')
     }
   }
 
