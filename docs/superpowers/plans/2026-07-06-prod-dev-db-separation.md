@@ -117,13 +117,36 @@ git commit -m "chore: initialize supabase CLI and link prod"
 - Consumes: linked project from Task 2.
 - Produces: the baseline schema migration — the new source of truth for schema.
 
-- [ ] **Step 1: Pull the live prod schema (public + auth + storage)**
+- [ ] **Step 1: Dump the live prod schema (public only)**
+
+> **Note (Docker):** `db pull` reported "No schema changes found" against the empty
+> migration history, and both `db pull`/`db dump` require **Docker Desktop running**.
+> With Docker started, use `db dump` (a straight pg_dump — no diff) instead of `db pull`.
 
 Run:
 ```bash
-npx supabase db pull --schema public,auth,storage baseline
+npx supabase db dump -f supabase/baseline.sql
 ```
-Paste the prod DB password if prompted. Expected: creates `supabase/migrations/<timestamp>_baseline.sql` and prints `Schema written to ...`.
+Expected: `Dumped schema to ...supabase/baseline.sql`. `db dump` emits **public** only (managed `auth`/`storage` schemas are excluded), so the push to dev won't hit "already exists". `auth.users` **data** is copied in Task 6; the `logos` storage bucket + policy are recreated in Task 6.
+
+- [ ] **Step 1b: Turn the dump into a timestamped migration (AGENT)**
+
+`mkdir -p supabase/migrations` and move the dump to
+`supabase/migrations/<YYYYMMDDHHMMSS>_baseline.sql`. Verify it contains 15 tables,
+10 functions, 46 policies, 2 enums, 2 public triggers.
+
+- [ ] **Step 1c: Mark the baseline as already-applied on prod (USER/CLI)**
+
+Run (linked to prod):
+```bash
+npx supabase migration repair --status applied <timestamp>
+```
+Expected: `Repaired migration history: [<timestamp>] => applied`. This stops a future
+`db push` to prod from re-running the baseline (which would fail on existing policies).
+
+**Known gap:** the `on_auth_user_created` trigger lives on `auth.users` (auth schema)
+and is NOT in the public dump. Recreate it on dev in Task 5 so new signups auto-create
+profiles.
 
 - [ ] **Step 2: Verify the baseline contains the core tables**
 
@@ -227,6 +250,11 @@ Verify: MCP `execute_sql` on dev → `SELECT count(*) FROM auth.users;` Expected
 
 Copy each table prod → dev with `execute_sql` (SELECT on prod, INSERT on dev), in this order so foreign keys resolve:
 `profiles → organizations → memberships → invitations → workspaces → boards → columns → groups → items → client_statuses → client_fields → clients → contacts → lead_sources → leads`.
+
+- [ ] **Step 2b: Recreate the `logos` storage bucket + policy**
+
+MCP `execute_sql` on prod → read the `logos` row from `storage.buckets` and its policies on `storage.objects` (`logos_read`). Recreate them on dev via `execute_sql` (insert the bucket row + create the policy). Objects/files themselves are not copied (non-goal).
+Verify: MCP `execute_sql` on dev → `SELECT id, public FROM storage.buckets WHERE id='logos';` Expected: one row.
 
 - [ ] **Step 3: Verify row-count parity (AGENT/MCP)**
 
