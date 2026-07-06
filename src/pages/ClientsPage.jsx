@@ -22,6 +22,7 @@ import {
   getCellText,
 } from '../lib/clientTable'
 import { exportRowsToCSV, downloadCSV } from '../lib/csv'
+import FavoriteStarButton from '../components/FavoriteStarButton'
 
 export default function ClientsPage() {
   const { orgId, isAdmin } = useOrg()
@@ -300,7 +301,10 @@ export default function ClientsPage() {
   return (
     <div className="mx-auto max-w-5xl p-6" data-testid="clients-page">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold text-text">לקוחות</h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-2xl font-bold text-text">לקוחות</h1>
+          <FavoriteStarButton type="clients" />
+        </div>
         <div className="flex gap-2">
           {isAdmin && (
             <Button variant="ghost" onClick={() => setFieldsManagerOpen(true)} data-testid="clients-fields-btn">
