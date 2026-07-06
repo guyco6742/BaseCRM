@@ -8,6 +8,7 @@ import Modal from '../components/ui/Modal'
 import Input from '../components/ui/Input'
 import InviteMemberModal from '../components/InviteMemberModal'
 import OrgLogo from '../components/OrgLogo'
+import Avatar from '../components/ui/Avatar'
 import { handleEnterAsTab } from '../lib/formNav'
 
 function slugify(name) {
@@ -17,6 +18,7 @@ function slugify(name) {
 export default function AdminPage() {
   const { user, isSuperAdmin, loading: authLoading } = useAuth()
   const [orgs, setOrgs] = useState([])
+  const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
@@ -35,6 +37,13 @@ export default function AdminPage() {
         .order('created_at', { ascending: false })
       if (error) throw error
       setOrgs(data || [])
+
+      const { data: uData, error: uErr } = await supabase
+        .from('profiles')
+        .select('id, full_name, email, is_super_admin, memberships(count)')
+        .order('created_at', { ascending: false })
+      if (uErr) throw uErr
+      setUsers((uData || []).filter((u) => !u.is_super_admin))
     } catch {
       setError('טעינת הארגונים נכשלה.')
     } finally {
@@ -116,6 +125,19 @@ export default function AdminPage() {
       await load()
     } catch {
       setError('מחיקת הארגון נכשלה.')
+    }
+  }
+
+  async function handleDeleteAccount(u) {
+    const label = u.full_name || u.email
+    if (!window.confirm(`למחוק לצמיתות את החשבון של ${label}? פעולה בלתי הפיכה!`)) return
+    if (!window.confirm('אישור אחרון: החשבון וכל החברויות שלו יימחקו לתמיד. להמשיך?')) return
+    try {
+      const { error } = await supabase.rpc('delete_user_account', { p_user_id: u.id })
+      if (error) throw error
+      await load()
+    } catch {
+      setError('מחיקת החשבון נכשלה.')
     }
   }
 
@@ -234,6 +256,41 @@ export default function AdminPage() {
           </div>
         </section>
       )}
+
+      <section className="mt-8" data-testid="admin-users-section">
+        <h2 className="mb-2 text-sm font-semibold text-text-muted">
+          משתמשים ({users.length})
+        </h2>
+        <div className="overflow-hidden rounded-lg border border-border">
+          {users.map((u) => (
+            <div
+              key={u.id}
+              className="flex items-center justify-between border-b border-border bg-surface px-4 py-3 last:border-b-0"
+              data-testid={`admin-user-row-${u.id}`}
+            >
+              <div className="flex items-center gap-3">
+                <Avatar name={u.full_name} email={u.email} />
+                <div>
+                  <div className="text-text">{u.full_name || u.email}</div>
+                  <div className="text-xs text-text-dim">{u.email}</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-text-dim">
+                  {u.memberships?.[0]?.count ?? 0} ארגונים
+                </span>
+                <button
+                  onClick={() => handleDeleteAccount(u)}
+                  className="text-sm text-text-dim hover:text-status-red"
+                  data-testid={`admin-user-delete-${u.id}`}
+                >
+                  מחק חשבון
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
 
       {/* יצירת ארגון */}
       <Modal
