@@ -2,6 +2,9 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useOrg } from '../context/OrgContext'
+import { useConfirm } from '../context/ConfirmContext'
+import { useToast } from '../context/ToastContext'
+import { useTitle } from '../lib/useTitle'
 import LoadingSpinner from '../components/ui/LoadingSpinner'
 import Button from '../components/ui/Button'
 import Modal from '../components/ui/Modal'
@@ -21,6 +24,8 @@ export default function BoardPage() {
   const { boardId } = useParams()
   const { orgId, isAdmin, role } = useOrg()
   const canEdit = role === 'admin' || role === 'member' || isAdmin
+  const confirm = useConfirm()
+  const { toast } = useToast()
 
   const [board, setBoard] = useState(null)
   const [columns, setColumns] = useState([])
@@ -37,6 +42,7 @@ export default function BoardPage() {
   const [archivedOpen, setArchivedOpen] = useState(false)
   const [addGroupOpen, setAddGroupOpen] = useState(false)
   const [groupName, setGroupName] = useState('')
+  const [savingGroup, setSavingGroup] = useState(false)
 
   // תצוגה: טבלה / קנבן — נשמרת לכל בורד בנפרד
   const [view, setView] = useState('table')
@@ -48,6 +54,8 @@ export default function BoardPage() {
     setView(localStorage.getItem(`basecrm.boardView:${boardId}`) || 'table')
     setKanbanColId(null)
   }, [boardId])
+
+  useTitle(board?.name)
 
   function switchView(v) {
     setView(v)
@@ -110,7 +118,10 @@ export default function BoardPage() {
       })
       .select()
       .single()
-    if (error) return setError('הוספת הפריט נכשלה.')
+    if (error) {
+      toast('הוספת הפריט נכשלה', 'error')
+      return setError('הוספת הפריט נכשלה.')
+    }
     setItems((prev) => [...prev, data])
   }
 
@@ -124,6 +135,7 @@ export default function BoardPage() {
       // הכתיבה נכשלה — מחזירים את המצב הקודם ומודיעים
       setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, name: item.name } : i)))
       setError('שמירת השם נכשלה. נסו שוב.')
+      toast('שמירת השם נכשלה', 'error')
     }
   }
 
@@ -138,6 +150,7 @@ export default function BoardPage() {
       // הכתיבה נכשלה — מחזירים את הערך הקודם ומודיעים
       setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, values: item.values } : i)))
       setError('שמירת השינוי נכשלה. נסו שוב.')
+      toast('שמירת השינוי נכשלה', 'error')
     }
   }
 
@@ -151,42 +164,68 @@ export default function BoardPage() {
     if (error) {
       setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, group_id: item.group_id } : i)))
       setError('העברת הקבוצה נכשלה. נסו שוב.')
+      toast('העברת הקבוצה נכשלה', 'error')
     }
   }
 
   // השבתת פריט — נשמר ב-DB עם is_archived, ניתן לשחזור
   async function archiveItem(item) {
     setItems((prev) => prev.filter((i) => i.id !== item.id))
-    await supabase.from('items').update({ is_archived: true }).eq('id', item.id)
+    const { error } = await supabase.from('items').update({ is_archived: true }).eq('id', item.id)
+    if (error) {
+      toast('השבתת הפריט נכשלה', 'error')
+    } else {
+      toast('הפריט הושבת בהצלחה')
+    }
   }
 
   // ---- פעולות קבוצות ----
   async function addGroup(e) {
     e.preventDefault()
-    const color = LABEL_COLORS[groups.length % LABEL_COLORS.length]
-    const { data, error } = await supabase
-      .from('groups')
-      .insert({
-        org_id: orgId,
-        board_id: boardId,
-        name: groupName.trim(),
-        color,
-        position: groups.length,
-      })
-      .select()
-      .single()
-    if (error) return setError('יצירת הקבוצה נכשלה.')
-    setGroups((prev) => [...prev, data])
-    setGroupName('')
-    setAddGroupOpen(false)
+    setSavingGroup(true)
+    try {
+      const color = LABEL_COLORS[groups.length % LABEL_COLORS.length]
+      const { data, error } = await supabase
+        .from('groups')
+        .insert({
+          org_id: orgId,
+          board_id: boardId,
+          name: groupName.trim(),
+          color,
+          position: groups.length,
+        })
+        .select()
+        .single()
+      if (error) {
+        toast('יצירת הקבוצה נכשלה', 'error')
+        return setError('יצירת הקבוצה נכשלה.')
+      }
+      setGroups((prev) => [...prev, data])
+      setGroupName('')
+      setAddGroupOpen(false)
+      toast('הקבוצה נוצרה בהצלחה')
+    } finally {
+      setSavingGroup(false)
+    }
   }
 
   // השבתת קבוצה — הפריטים שבתוכה נשמרים ב-DB (לא נמחקים), ניתן לשחזור
   async function archiveGroup(group) {
-    if (!window.confirm(`להשבית את הקבוצה "${group.name}"? הפריטים יישמרו וניתן לשחזר בהמשך.`)) return
+    const ok = await confirm({
+      title: 'השבתת קבוצה',
+      message: `להשבית את הקבוצה "${group.name}"? הפריטים יישמרו וניתן לשחזר בהמשך.`,
+      confirmText: 'השבתה',
+      danger: true,
+    })
+    if (!ok) return
     setGroups((prev) => prev.filter((g) => g.id !== group.id))
     setItems((prev) => prev.filter((i) => i.group_id !== group.id))
-    await supabase.from('groups').update({ is_archived: true }).eq('id', group.id)
+    const { error } = await supabase.from('groups').update({ is_archived: true }).eq('id', group.id)
+    if (error) {
+      toast('השבתת הקבוצה נכשלה', 'error')
+    } else {
+      toast('הקבוצה הושבתה בהצלחה')
+    }
   }
 
   // ---- פעולות עמודות ----
@@ -203,20 +242,34 @@ export default function BoardPage() {
       })
       .select()
       .single()
-    if (error) return setError('יצירת העמודה נכשלה.')
+    if (error) {
+      toast('יצירת העמודה נכשלה', 'error')
+      return setError('יצירת העמודה נכשלה.')
+    }
     setColumns((prev) => [...prev, data])
     setAddColumnOpen(false)
+    toast('העמודה נוצרה בהצלחה')
   }
 
   // השבתת עמודה — נשמרת ב-DB עם is_archived, ניתן לשחזור
   async function archiveColumn(column) {
     setColumns((prev) => prev.map((c) => (c.id === column.id ? { ...c, is_archived: true } : c)))
-    await supabase.from('columns').update({ is_archived: true }).eq('id', column.id)
+    const { error } = await supabase.from('columns').update({ is_archived: true }).eq('id', column.id)
+    if (error) {
+      toast('השבתת העמודה נכשלה', 'error')
+    } else {
+      toast('העמודה הושבתה בהצלחה')
+    }
   }
 
   async function restoreColumn(column) {
     setColumns((prev) => prev.map((c) => (c.id === column.id ? { ...c, is_archived: false } : c)))
-    await supabase.from('columns').update({ is_archived: false }).eq('id', column.id)
+    const { error } = await supabase.from('columns').update({ is_archived: false }).eq('id', column.id)
+    if (error) {
+      toast('שחזור העמודה נכשל', 'error')
+    } else {
+      toast('העמודה שוחזרה בהצלחה')
+    }
   }
 
   // עדכון עמודה קיימת (שם + הגדרות: תוויות/צבעים/אפשרויות/יחידה)
@@ -224,7 +277,12 @@ export default function BoardPage() {
     // שומרים על מפתח ה-hidden אם קיים
     const merged = { ...settings, hidden: column.settings?.hidden }
     setColumns((prev) => prev.map((c) => (c.id === column.id ? { ...c, name, settings: merged } : c)))
-    await supabase.from('columns').update({ name, settings: merged }).eq('id', column.id)
+    const { error } = await supabase.from('columns').update({ name, settings: merged }).eq('id', column.id)
+    if (error) {
+      toast('שמירת העמודה נכשלה', 'error')
+    } else {
+      toast('העמודה נשמרה בהצלחה')
+    }
   }
 
   // הזזת עמודה שמאלה/ימינה — החלפת מיקום עם השכן הפעיל ושמירה
@@ -241,17 +299,23 @@ export default function BoardPage() {
         c.id === a.id ? { ...c, position: b.position } : c.id === b.id ? { ...c, position: a.position } : c
       )
     )
-    await Promise.all([
+    const results = await Promise.all([
       supabase.from('columns').update({ position: b.position }).eq('id', a.id),
       supabase.from('columns').update({ position: a.position }).eq('id', b.id),
     ])
+    if (results.some((r) => r.error)) {
+      toast('שינוי סדר העמודות נכשל', 'error')
+    }
   }
 
   // הצגה/הסתרה של עמודה (נשמר ב-settings.hidden)
   async function toggleColumnHidden(column) {
     const newSettings = { ...(column.settings || {}), hidden: !column.settings?.hidden }
     setColumns((prev) => prev.map((c) => (c.id === column.id ? { ...c, settings: newSettings } : c)))
-    await supabase.from('columns').update({ settings: newSettings }).eq('id', column.id)
+    const { error } = await supabase.from('columns').update({ settings: newSettings }).eq('id', column.id)
+    if (error) {
+      toast('עדכון תצוגת העמודה נכשל', 'error')
+    }
   }
 
   if (loading) return <LoadingSpinner label="טוען בורד..." />
@@ -350,8 +414,11 @@ export default function BoardPage() {
       {error && <p className="mb-4 text-status-red">{error}</p>}
 
       {groups.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border bg-surface/50 p-10 text-center text-text-muted">
-          {isAdmin ? 'אין עדיין קבוצות. הוסיפו קבוצה כדי להתחיל.' : 'הבורד ריק.'}
+        <div className="rounded-lg border border-dashed border-border bg-surface/50 p-10 text-center">
+          <p className="mb-4 text-text-muted">
+            {isAdmin ? 'אין עדיין קבוצות. הוסיפו קבוצה כדי להתחיל.' : 'הבורד ריק.'}
+          </p>
+          {isAdmin && <Button onClick={() => setAddGroupOpen(true)}>+ קבוצה חדשה</Button>}
         </div>
       ) : view === 'kanban' ? (
         !kanbanColumn ? (
@@ -459,7 +526,7 @@ export default function BoardPage() {
             data-testid="group-name-input"
           />
           <div className="flex justify-start gap-2">
-            <Button type="submit" disabled={!groupName.trim()} data-testid="group-create-submit">
+            <Button type="submit" disabled={!groupName.trim()} loading={savingGroup} data-testid="group-create-submit">
               צור קבוצה
             </Button>
             <Button type="button" variant="ghost" onClick={() => setAddGroupOpen(false)}>

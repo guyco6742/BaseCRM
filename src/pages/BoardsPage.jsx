@@ -2,6 +2,9 @@ import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useOrg } from '../context/OrgContext'
+import { useConfirm } from '../context/ConfirmContext'
+import { useToast } from '../context/ToastContext'
+import { useTitle } from '../lib/useTitle'
 import LoadingSpinner from '../components/ui/LoadingSpinner'
 import Button from '../components/ui/Button'
 import Modal from '../components/ui/Modal'
@@ -12,6 +15,8 @@ import { handleEnterAsTab } from '../lib/formNav'
 export default function BoardsPage() {
   const { wsId } = useParams()
   const { orgId, isAdmin, structureVersion, refreshStructure } = useOrg()
+  const confirm = useConfirm()
+  const { toast } = useToast()
   const [workspace, setWorkspace] = useState(null)
   const [boards, setBoards] = useState([])
   const [loading, setLoading] = useState(true)
@@ -42,6 +47,8 @@ export default function BoardsPage() {
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wsId, structureVersion])
+
+  useTitle(workspace?.name || 'בורדים')
 
   // יצירת בורד חדש + קבוצה ראשונה + עמודות ברירת מחדל (סטטוס, אחראי, תאריך)
   async function handleCreate(e) {
@@ -80,8 +87,10 @@ export default function BoardsPage() {
       setName('')
       refreshStructure()
       await load()
+      toast('הבורד נוצר בהצלחה')
     } catch {
       setError('יצירת הבורד נכשלה.')
+      toast('יצירת הבורד נכשלה', 'error')
     } finally {
       setSaving(false)
     }
@@ -89,14 +98,22 @@ export default function BoardsPage() {
 
   // השבתה — הבורד וכל הנתונים נשמרים ב-DB וניתנים לשחזור
   async function handleArchive(board) {
-    if (!window.confirm(`להשבית את הבורד "${board.name}"? הנתונים יישמרו וניתן לשחזר.`)) return
+    const ok = await confirm({
+      title: 'השבתת בורד',
+      message: `להשבית את הבורד "${board.name}"? הנתונים יישמרו וניתן לשחזר.`,
+      confirmText: 'השבתה',
+      danger: true,
+    })
+    if (!ok) return
     try {
       const { error } = await supabase.from('boards').update({ is_archived: true }).eq('id', board.id)
       if (error) throw error
       refreshStructure()
       await load()
+      toast('הבורד הושבת בהצלחה')
     } catch {
       setError('השבתת הבורד נכשלה.')
+      toast('השבתת הבורד נכשלה', 'error')
     }
   }
 
@@ -106,8 +123,10 @@ export default function BoardsPage() {
       if (error) throw error
       refreshStructure()
       await load()
+      toast('הבורד שוחזר בהצלחה')
     } catch {
       setError('שחזור הבורד נכשל.')
+      toast('שחזור הבורד נכשל', 'error')
     }
   }
 
@@ -133,8 +152,11 @@ export default function BoardsPage() {
       {loading ? (
         <LoadingSpinner label="טוען..." />
       ) : activeBoards.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border bg-surface/50 p-10 text-center text-text-muted">
-          {isAdmin ? 'אין עדיין בורדים. צרו את הבורד הראשון.' : 'אין עדיין בורדים בוורקספייס זה.'}
+        <div className="rounded-lg border border-dashed border-border bg-surface/50 p-10 text-center">
+          <p className="mb-4 text-text-muted">
+            {isAdmin ? 'אין עדיין בורדים. צרו את הבורד הראשון.' : 'אין עדיין בורדים בוורקספייס זה.'}
+          </p>
+          {isAdmin && <Button onClick={() => setModalOpen(true)}>+ בורד חדש</Button>}
         </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -209,8 +231,8 @@ export default function BoardsPage() {
             הבורד ייווצר עם קבוצה ראשונה ועמודות ברירת מחדל (סטטוס, אחראי, תאריך יעד).
           </p>
           <div className="flex justify-start gap-2">
-            <Button type="submit" disabled={saving || !name.trim()} data-testid="board-create-submit">
-              {saving ? 'יוצר...' : 'צור בורד'}
+            <Button type="submit" disabled={!name.trim()} loading={saving} data-testid="board-create-submit">
+              צור בורד
             </Button>
             <Button type="button" variant="ghost" onClick={() => setModalOpen(false)}>
               ביטול
