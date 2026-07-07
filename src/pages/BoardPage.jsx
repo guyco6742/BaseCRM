@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useOrg } from '../context/OrgContext'
@@ -104,56 +104,77 @@ export default function BoardPage() {
     [orgMembers]
   )
 
+  // עמודות פעילות (לא מושבתות) לפי סדר; מתוכן — המוצגות (לא מוסתרות)
+  // מיוצב עם useMemo כדי לשמור על זהות מערך יציבה בין רינדורים (חיוני ל-React.memo בשורות הבורד)
+  const orderedColumns = useMemo(
+    () => columns.filter((c) => !c.is_archived).sort((a, b) => a.position - b.position),
+    [columns]
+  )
+  const archivedColumns = useMemo(() => columns.filter((c) => c.is_archived), [columns])
+  const visibleColumns = useMemo(
+    () => orderedColumns.filter((c) => !c.settings?.hidden),
+    [orderedColumns]
+  )
+
   // ---- פעולות פריטים ----
-  async function addItem(group, name, values = {}) {
-    const groupItems = items.filter((i) => i.group_id === group.id)
-    const { data, error } = await supabase
-      .from('items')
-      .insert({
-        org_id: orgId,
-        board_id: boardId,
-        group_id: group.id,
-        name,
-        values,
-        position: groupItems.length,
-      })
-      .select()
-      .single()
-    if (error) {
-      toast('הוספת הפריט נכשלה', 'error')
-      return setError('הוספת הפריט נכשלה.')
-    }
-    setItems((prev) => [...prev, data])
-  }
+  const addItem = useCallback(
+    async (group, name, values = {}) => {
+      const groupItems = items.filter((i) => i.group_id === group.id)
+      const { data, error } = await supabase
+        .from('items')
+        .insert({
+          org_id: orgId,
+          board_id: boardId,
+          group_id: group.id,
+          name,
+          values,
+          position: groupItems.length,
+        })
+        .select()
+        .single()
+      if (error) {
+        toast('הוספת הפריט נכשלה', 'error')
+        return setError('הוספת הפריט נכשלה.')
+      }
+      setItems((prev) => [...prev, data])
+    },
+    [items, orgId, boardId, toast]
+  )
 
-  async function updateItemName(item, name) {
-    setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, name } : i)))
-    const { error } = await supabase
-      .from('items')
-      .update({ name, updated_at: new Date().toISOString() })
-      .eq('id', item.id)
-    if (error) {
-      // הכתיבה נכשלה — מחזירים את המצב הקודם ומודיעים
-      setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, name: item.name } : i)))
-      setError('שמירת השם נכשלה. נסו שוב.')
-      toast('שמירת השם נכשלה', 'error')
-    }
-  }
+  const updateItemName = useCallback(
+    async (item, name) => {
+      setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, name } : i)))
+      const { error } = await supabase
+        .from('items')
+        .update({ name, updated_at: new Date().toISOString() })
+        .eq('id', item.id)
+      if (error) {
+        // הכתיבה נכשלה — מחזירים את המצב הקודם ומודיעים
+        setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, name: item.name } : i)))
+        setError('שמירת השם נכשלה. נסו שוב.')
+        toast('שמירת השם נכשלה', 'error')
+      }
+    },
+    [toast]
+  )
 
-  async function updateItemValue(item, columnId, value) {
-    const newValues = { ...(item.values || {}), [columnId]: value }
-    setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, values: newValues } : i)))
-    const { error } = await supabase
-      .from('items')
-      .update({ values: newValues, updated_at: new Date().toISOString() })
-      .eq('id', item.id)
-    if (error) {
-      // הכתיבה נכשלה — מחזירים את הערך הקודם ומודיעים
-      setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, values: item.values } : i)))
-      setError('שמירת השינוי נכשלה. נסו שוב.')
-      toast('שמירת השינוי נכשלה', 'error')
-    }
-  }
+  const updateItemValue = useCallback(
+    async (item, columnId, value) => {
+      const newValues = { ...(item.values || {}), [columnId]: value }
+      setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, values: newValues } : i)))
+      const { error } = await supabase
+        .from('items')
+        .update({ values: newValues, updated_at: new Date().toISOString() })
+        .eq('id', item.id)
+      if (error) {
+        // הכתיבה נכשלה — מחזירים את הערך הקודם ומודיעים
+        setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, values: item.values } : i)))
+        setError('שמירת השינוי נכשלה. נסו שוב.')
+        toast('שמירת השינוי נכשלה', 'error')
+      }
+    },
+    [toast]
+  )
 
   // העברת משימה לקבוצה אחרת
   async function moveItemToGroup(item, groupId) {
@@ -170,15 +191,18 @@ export default function BoardPage() {
   }
 
   // השבתת פריט — נשמר ב-DB עם is_archived, ניתן לשחזור
-  async function archiveItem(item) {
-    setItems((prev) => prev.filter((i) => i.id !== item.id))
-    const { error } = await supabase.from('items').update({ is_archived: true }).eq('id', item.id)
-    if (error) {
-      toast('השבתת הפריט נכשלה', 'error')
-    } else {
-      toast('הפריט הושבת בהצלחה')
-    }
-  }
+  const archiveItem = useCallback(
+    async (item) => {
+      setItems((prev) => prev.filter((i) => i.id !== item.id))
+      const { error } = await supabase.from('items').update({ is_archived: true }).eq('id', item.id)
+      if (error) {
+        toast('השבתת הפריט נכשלה', 'error')
+      } else {
+        toast('הפריט הושבת בהצלחה')
+      }
+    },
+    [toast]
+  )
 
   // ---- פעולות קבוצות ----
   async function addGroup(e) {
@@ -211,23 +235,26 @@ export default function BoardPage() {
   }
 
   // השבתת קבוצה — הפריטים שבתוכה נשמרים ב-DB (לא נמחקים), ניתן לשחזור
-  async function archiveGroup(group) {
-    const ok = await confirm({
-      title: 'השבתת קבוצה',
-      message: `להשבית את הקבוצה "${group.name}"? הפריטים יישמרו וניתן לשחזר בהמשך.`,
-      confirmText: 'השבתה',
-      danger: true,
-    })
-    if (!ok) return
-    setGroups((prev) => prev.filter((g) => g.id !== group.id))
-    setItems((prev) => prev.filter((i) => i.group_id !== group.id))
-    const { error } = await supabase.from('groups').update({ is_archived: true }).eq('id', group.id)
-    if (error) {
-      toast('השבתת הקבוצה נכשלה', 'error')
-    } else {
-      toast('הקבוצה הושבתה בהצלחה')
-    }
-  }
+  const archiveGroup = useCallback(
+    async (group) => {
+      const ok = await confirm({
+        title: 'השבתת קבוצה',
+        message: `להשבית את הקבוצה "${group.name}"? הפריטים יישמרו וניתן לשחזר בהמשך.`,
+        confirmText: 'השבתה',
+        danger: true,
+      })
+      if (!ok) return
+      setGroups((prev) => prev.filter((g) => g.id !== group.id))
+      setItems((prev) => prev.filter((i) => i.group_id !== group.id))
+      const { error } = await supabase.from('groups').update({ is_archived: true }).eq('id', group.id)
+      if (error) {
+        toast('השבתת הקבוצה נכשלה', 'error')
+      } else {
+        toast('הקבוצה הושבתה בהצלחה')
+      }
+    },
+    [confirm, toast]
+  )
 
   // ---- פעולות עמודות ----
   async function addColumn({ name, type, settings }) {
@@ -253,7 +280,7 @@ export default function BoardPage() {
   }
 
   // השבתת עמודה — נשמרת ב-DB עם is_archived, ניתן לשחזור
-  async function archiveColumn(column) {
+  const archiveColumn = useCallback(async (column) => {
     setColumns((prev) => prev.map((c) => (c.id === column.id ? { ...c, is_archived: true } : c)))
     const { error } = await supabase.from('columns').update({ is_archived: true }).eq('id', column.id)
     if (error) {
@@ -261,7 +288,7 @@ export default function BoardPage() {
     } else {
       toast('העמודה הושבתה בהצלחה')
     }
-  }
+  }, [toast])
 
   async function restoreColumn(column) {
     setColumns((prev) => prev.map((c) => (c.id === column.id ? { ...c, is_archived: false } : c)))
@@ -321,10 +348,6 @@ export default function BoardPage() {
 
   if (loading) return <LoadingSpinner label="טוען בורד..." />
 
-  // עמודות פעילות (לא מושבתות) לפי סדר; מתוכן — המוצגות (לא מוסתרות)
-  const orderedColumns = columns.filter((c) => !c.is_archived).sort((a, b) => a.position - b.position)
-  const archivedColumns = columns.filter((c) => c.is_archived)
-  const visibleColumns = orderedColumns.filter((c) => !c.settings?.hidden)
   const minTableWidth = 220 + visibleColumns.length * 160 + 40
 
   // קנבן: עמודות סטטוס זמינות + העמודה הפעילה (ברירת מחדל: הראשונה)

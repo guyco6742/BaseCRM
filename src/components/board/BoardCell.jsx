@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import Avatar from '../ui/Avatar'
 import Popover from './Popover'
 import FilesCell from './FilesCell'
@@ -51,7 +51,7 @@ export function TextEditor({ value, onChange, type = 'text', display }) {
   )
 }
 
-export default function BoardCell({ column, value, onChange, members = [], clients = [], canEdit = true, item, orgId }) {
+function BoardCell({ column, value, onChange, members = [], clients = [], canEdit = true, item, orgId }) {
   const s = column.settings || {}
   const readOnlyWrap = (content) => <div className="flex h-full items-center justify-center px-2 text-sm">{content}</div>
 
@@ -333,6 +333,8 @@ export default function BoardCell({ column, value, onChange, members = [], clien
       return readOnlyWrap(<span className="text-text-dim">?</span>)
   }
 }
+
+export default memo(BoardCell)
 
 function LongTextPanel({ value, onChange, close }) {
   const [draft, setDraft] = useState(value ?? '')
