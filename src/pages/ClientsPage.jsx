@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useOrg } from '../context/OrgContext'
+import { useConfirm } from '../context/ConfirmContext'
+import { useToast } from '../context/ToastContext'
+import { useTitle } from '../lib/useTitle'
 import LoadingSpinner from '../components/ui/LoadingSpinner'
 import Button from '../components/ui/Button'
 import Modal from '../components/ui/Modal'
@@ -25,6 +28,9 @@ import { exportRowsToCSV, downloadCSV } from '../lib/csv'
 
 export default function ClientsPage() {
   const { orgId, isAdmin } = useOrg()
+  const confirm = useConfirm()
+  const { toast } = useToast()
+  useTitle('לקוחות')
   const [clients, setClients] = useState([])
   const [statuses, setStatuses] = useState([])
   const [fields, setFields] = useState([])
@@ -177,6 +183,7 @@ export default function ClientsPage() {
     if (error) {
       setClients((cur) => cur.map((c) => (c.id === clientId ? { ...c, status_id: prev?.status_id } : c)))
       setError('עדכון השלב נכשל.')
+      toast('עדכון השלב נכשל.', 'error')
     }
   }
 
@@ -191,6 +198,7 @@ export default function ClientsPage() {
     if (error) {
       setClients((cur) => cur.map((c) => (c.id === clientId ? { ...c, [field]: prev?.[field] } : c)))
       setError('עדכון השדה נכשל.')
+      toast('עדכון השדה נכשל.', 'error')
     }
   }
 
@@ -207,6 +215,7 @@ export default function ClientsPage() {
         cur.map((c) => (c.id === client.id ? { ...c, custom_values: client.custom_values } : c))
       )
       setError('שמירת השינוי נכשלה.')
+      toast('שמירת השינוי נכשלה.', 'error')
     }
   }
 
@@ -215,19 +224,24 @@ export default function ClientsPage() {
     e.preventDefault()
     setSaving(true)
     try {
-      const { error } = await supabase.from('clients').insert({
-        org_id: orgId,
-        name: newClient.name.trim(),
-        phone: newClient.phone.trim() || null,
-        email: newClient.email.trim() || null,
-        status_id: newClient.status_id ?? statuses[0]?.id ?? null, // ברירת מחדל: השלב הראשון בפייפליין
-        custom_values: newClient.custom_values || {},
-        position: clients.length,
-      })
+      const { data, error } = await supabase
+        .from('clients')
+        .insert({
+          org_id: orgId,
+          name: newClient.name.trim(),
+          phone: newClient.phone.trim() || null,
+          email: newClient.email.trim() || null,
+          status_id: newClient.status_id ?? statuses[0]?.id ?? null, // ברירת מחדל: השלב הראשון בפייפליין
+          custom_values: newClient.custom_values || {},
+          position: clients.length,
+        })
+        .select()
+        .single()
       if (error) throw error
       setAddOpen(false)
       setNewClient({ name: '', phone: '', email: '', status_id: null, custom_values: {} })
-      await load()
+      setClients((cur) => [...cur, data])
+      toast('הלקוח נוצר בהצלחה')
     } catch {
       setError('יצירת הלקוח נכשלה.')
     } finally {
@@ -236,14 +250,30 @@ export default function ClientsPage() {
   }
 
   async function archiveClient(client) {
-    if (!window.confirm(`להשבית את הלקוח "${client.name}"? הנתונים יישמרו וניתן לשחזר.`)) return
-    await supabase.from('clients').update({ is_archived: true }).eq('id', client.id)
-    await load()
+    const ok = await confirm({
+      title: 'השבתת לקוח',
+      message: `להשבית את הלקוח "${client.name}"? הנתונים יישמרו וניתן לשחזר.`,
+      confirmText: 'השבתה',
+      danger: true,
+    })
+    if (!ok) return
+    const { error } = await supabase.from('clients').update({ is_archived: true }).eq('id', client.id)
+    if (error) {
+      toast('השבתת הלקוח נכשלה.', 'error')
+      return
+    }
+    setClients((cur) => cur.filter((c) => c.id !== client.id))
+    toast('הלקוח הושבת בהצלחה')
   }
 
   async function restoreClient(client) {
-    await supabase.from('clients').update({ is_archived: false }).eq('id', client.id)
+    const { error } = await supabase.from('clients').update({ is_archived: false }).eq('id', client.id)
+    if (error) {
+      toast('שחזור הלקוח נכשל.', 'error')
+      return
+    }
     await load()
+    toast('הלקוח שוחזר בהצלחה')
   }
 
   // ---- שדות מותאמים ללקוחות (שימוש חוזר במנוע העמודות) ----
@@ -258,11 +288,14 @@ export default function ClientsPage() {
     if (error) return setError('יצירת השדה נכשלה.')
     setAddFieldOpen(false)
     await load()
+    toast('השדה נוצר בהצלחה')
   }
 
   async function updateField(field, { name, settings }) {
-    await supabase.from('client_fields').update({ name, settings }).eq('id', field.id)
+    const { error } = await supabase.from('client_fields').update({ name, settings }).eq('id', field.id)
     await load()
+    if (error) toast('שמירת השדה נכשלה.', 'error')
+    else toast('השדה נשמר בהצלחה')
   }
 
   async function moveField(field, dir) {
@@ -288,11 +321,13 @@ export default function ClientsPage() {
   async function archiveField(field) {
     await supabase.from('client_fields').update({ is_archived: true }).eq('id', field.id)
     await load()
+    toast('השדה הושבת בהצלחה')
   }
 
   async function restoreField(field) {
     await supabase.from('client_fields').update({ is_archived: false }).eq('id', field.id)
     await load()
+    toast('השדה שוחזר בהצלחה')
   }
 
   const archivedFields = fields.filter((f) => f.is_archived)
@@ -491,11 +526,29 @@ export default function ClientsPage() {
           onSetStatus={setClientStatus}
         />
       ) : sorted.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border bg-surface/50 p-10 text-center text-text-muted">
-          {search || statusFilter || filters.length
-            ? 'לא נמצאו לקוחות התואמים את הסינון.'
-            : 'אין עדיין לקוחות. הוסיפו את הראשון!'}
-        </div>
+        search || statusFilter || filters.length ? (
+          <div className="rounded-lg border border-dashed border-border bg-surface/50 p-10 text-center">
+            <p className="mb-4 text-text-muted">לא נמצאו לקוחות התואמים את הסינון.</p>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setSearch('')
+                setStatusFilter(null)
+                setFilters([])
+              }}
+              data-testid="clients-clear-filters"
+            >
+              נקו סינון
+            </Button>
+          </div>
+        ) : (
+          <div className="rounded-lg border border-dashed border-border bg-surface/50 p-10 text-center">
+            <p className="mb-4 text-text-muted">אין עדיין לקוחות.</p>
+            <Button onClick={() => setAddOpen(true)} data-testid="clients-empty-add-btn">
+              + לקוח חדש
+            </Button>
+          </div>
+        )
       ) : (
         <ClientsTable
           clients={sorted}
@@ -609,8 +662,13 @@ export default function ClientsPage() {
             ))}
 
           <div className="flex justify-start gap-2">
-            <Button type="submit" disabled={saving || !newClient.name.trim()} data-testid="client-create-submit">
-              {saving ? 'יוצר...' : 'צור לקוח'}
+            <Button
+              type="submit"
+              disabled={!newClient.name.trim()}
+              loading={saving}
+              data-testid="client-create-submit"
+            >
+              צור לקוח
             </Button>
             <Button type="button" variant="ghost" onClick={() => setAddOpen(false)}>
               ביטול
