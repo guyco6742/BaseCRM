@@ -35,7 +35,7 @@ export function OrgProvider({ children }) {
       .eq('org_id', forOrg)
     // Bail if the org changed while this request was in flight
     if (orgIdRef.current !== forOrg) return
-    setMembers(data || [])
+    if (data) setMembers(data)
   }, [orgId])
 
   useEffect(() => {

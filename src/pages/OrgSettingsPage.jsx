@@ -15,7 +15,7 @@ import ClientStatusManager from '../components/ClientStatusManager'
 import LeadSourcesManager from '../components/crm/LeadSourcesManager'
 
 export default function OrgSettingsPage() {
-  const { orgId, org, isAdmin, loading: orgLoading, refreshOrg } = useOrg()
+  const { orgId, org, isAdmin, loading: orgLoading, refreshOrg, refreshMembers } = useOrg()
   const { user, isSuperAdmin } = useAuth()
   const confirm = useConfirm()
   const { toast } = useToast()
@@ -64,6 +64,7 @@ export default function OrgSettingsPage() {
       const { error } = await supabase.from('memberships').update({ role }).eq('id', member.id)
       if (error) throw error
       await load()
+      refreshMembers()
       toast('התפקיד עודכן בהצלחה')
     } catch {
       setError('עדכון התפקיד נכשל.')
@@ -88,6 +89,7 @@ export default function OrgSettingsPage() {
       if (error) throw error
       // data === 'account_deleted' | 'removed_from_org'
       await load()
+      refreshMembers()
       toast(data === 'account_deleted' ? 'החשבון נמחק בהצלחה' : 'המשתמש הוסר מהארגון בהצלחה')
     } catch (e) {
       const messages = {

@@ -260,7 +260,7 @@ export default function ClientsPage() {
       toast('השבתת הלקוח נכשלה.', 'error')
       return
     }
-    setClients((cur) => cur.filter((c) => c.id !== client.id))
+    setClients((cur) => cur.map((c) => (c.id === client.id ? { ...c, is_archived: true } : c)))
     toast('הלקוח הושבת בהצלחה')
   }
 
