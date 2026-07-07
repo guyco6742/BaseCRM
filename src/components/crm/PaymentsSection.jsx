@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useToast } from '../../context/ToastContext'
+import { useConfirm } from '../../context/ConfirmContext'
 import { PAYMENT_STATUSES, PAYMENT_METHODS, formatAmount, sumByStatus } from '../../lib/payments'
 import Button from '../ui/Button'
 import AddPaymentModal from './AddPaymentModal'
@@ -16,6 +17,7 @@ export function PaymentStatusChip({ status }) {
 // היסטוריית תשלומים בכרטיס לקוח
 export default function PaymentsSection({ orgId, clientId }) {
   const { toast } = useToast()
+  const confirm = useConfirm()
   const [payments, setPayments] = useState([])
   const [loading, setLoading] = useState(true)
   const [addOpen, setAddOpen] = useState(false)
@@ -42,6 +44,13 @@ export default function PaymentsSection({ orgId, clientId }) {
   }
 
   async function archivePayment(p) {
+    const ok = await confirm({
+      title: 'ארכוב תשלום',
+      message: 'האם לארכב את התשלום? הפעולה תסתיר אותו מהיומן.',
+      confirmText: 'ארכוב',
+      danger: true,
+    })
+    if (!ok) return
     const { error } = await supabase.from('payments').update({ is_archived: true }).eq('id', p.id)
     if (error) { toast('הארכוב נכשל.', 'error'); return }
     await load()
