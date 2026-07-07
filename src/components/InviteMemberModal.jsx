@@ -113,8 +113,8 @@ export default function InviteMemberModal({ open, onClose, orgId, defaultRole = 
           {error && <p className="text-sm text-status-red">{error}</p>}
 
           <div className="flex justify-start gap-2 pt-2">
-            <Button type="submit" disabled={loading} data-testid="invite-submit">
-              {loading ? 'יוצר...' : 'צור הזמנה'}
+            <Button type="submit" loading={loading} data-testid="invite-submit">
+              צור הזמנה
             </Button>
             <Button type="button" variant="ghost" onClick={handleClose}>
               ביטול
