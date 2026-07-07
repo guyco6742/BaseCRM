@@ -141,6 +141,19 @@ export default function Sidebar() {
           🤝 לקוחות
         </NavLink>
 
+        {/* CRM — תשלומים */}
+        <NavLink
+          to={`/org/${orgId}/payments`}
+          data-testid="sidebar-payments-link"
+          className={({ isActive }) =>
+            `mb-2 flex items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium ${
+              isActive ? 'bg-accent/20 text-accent' : 'text-text-muted hover:bg-surface-2'
+            }`
+          }
+        >
+          💳 תשלומים
+        </NavLink>
+
         {/* עמוד אופציונלי — מוצג רק אם הופעל לארגון הזה ע"י סופר-אדמין */}
         {org?.features?.send_contract && (
           <NavLink

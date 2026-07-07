@@ -17,6 +17,7 @@ const BoardsPage = lazy(() => import('./pages/BoardsPage'))
 const BoardPage = lazy(() => import('./pages/BoardPage'))
 const ClientsPage = lazy(() => import('./pages/ClientsPage'))
 const ClientPage = lazy(() => import('./pages/ClientPage'))
+const PaymentsPage = lazy(() => import('./pages/PaymentsPage'))
 const OrgSettingsPage = lazy(() => import('./pages/OrgSettingsPage'))
 const SendContractPage = lazy(() => import('./pages/SendContractPage'))
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'))
@@ -50,6 +51,7 @@ export default function App() {
           <Route path="board/:boardId" element={<BoardPage />} />
           <Route path="clients" element={<ClientsPage />} />
           <Route path="clients/:clientId" element={<ClientPage />} />
+          <Route path="payments" element={<PaymentsPage />} />
           <Route path="settings" element={<OrgSettingsPage />} />
           <Route path="send-contract" element={<SendContractPage />} />
         </Route>
