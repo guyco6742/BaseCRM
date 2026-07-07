@@ -10,6 +10,7 @@ const SignupPage = lazy(() => import('./pages/SignupPage'))
 const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage'))
 const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'))
 const AcceptInvitePage = lazy(() => import('./pages/AcceptInvitePage'))
+const PayThanksPage = lazy(() => import('./pages/PayThanksPage'))
 const DashboardPage = lazy(() => import('./pages/DashboardPage'))
 const AdminPage = lazy(() => import('./pages/AdminPage'))
 const OrgHomePage = lazy(() => import('./pages/OrgHomePage'))
@@ -32,6 +33,7 @@ export default function App() {
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route path="/accept-invite" element={<AcceptInvitePage />} />
+      <Route path="/pay/thanks" element={<PayThanksPage />} />
 
       {/* מוגן */}
       <Route

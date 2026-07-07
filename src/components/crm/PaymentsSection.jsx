@@ -15,7 +15,7 @@ export function PaymentStatusChip({ status }) {
 }
 
 // היסטוריית תשלומים בכרטיס לקוח
-export default function PaymentsSection({ orgId, clientId }) {
+export default function PaymentsSection({ orgId, clientId, clientPhone }) {
   const { toast } = useToast()
   const confirm = useConfirm()
   const [payments, setPayments] = useState([])
@@ -41,6 +41,17 @@ export default function PaymentsSection({ orgId, clientId }) {
       .update({ status: 'paid', paid_at: new Date().toISOString() }).eq('id', p.id)
     if (error) { toast('העדכון נכשל.', 'error'); return }
     await load()
+  }
+
+  async function checkStatus(p) {
+    const { data } = await supabase.functions.invoke('check-payment-status', { body: { payment_id: p.id } })
+    if (data?.status && data.status !== 'pending') { toast('הסטטוס עודכן'); await load() }
+    else toast('עדיין ממתין לתשלום')
+  }
+
+  function copyLink(p) {
+    navigator.clipboard.writeText(p.payment_link)
+    toast('הקישור הועתק')
   }
 
   async function archivePayment(p) {
@@ -93,6 +104,19 @@ export default function PaymentsSection({ orgId, clientId }) {
                   סמן כשולם
                 </button>
               )}
+              {p.status === 'pending' && p.provider_ref && (
+                <button type="button" data-testid={`payment-checkstatus-${p.id}`}
+                  className="text-xs text-accent hover:underline"
+                  onClick={() => checkStatus(p)}>
+                  בדוק סטטוס
+                </button>
+              )}
+              {p.payment_link && (
+                <button type="button" onClick={() => copyLink(p)}
+                  className="text-xs text-text-dim hover:text-accent" data-testid={`payment-copylink-${p.id}`}>
+                  העתק לינק
+                </button>
+              )}
               <button type="button" onClick={() => archivePayment(p)}
                 className="text-xs text-text-dim hover:text-status-red" data-testid={`payment-archive-${p.id}`}>
                 ארכב
@@ -102,7 +126,7 @@ export default function PaymentsSection({ orgId, clientId }) {
         </ul>
       )}
       <AddPaymentModal open={addOpen} onClose={() => setAddOpen(false)}
-        orgId={orgId} clientId={clientId} onSaved={load} />
+        orgId={orgId} clientId={clientId} clientPhone={clientPhone} onSaved={load} />
     </section>
   )
 }

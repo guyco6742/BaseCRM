@@ -555,7 +555,7 @@ export default function ClientPage() {
             )}
           </section>
 
-          <PaymentsSection orgId={orgId} clientId={clientId} />
+          <PaymentsSection orgId={orgId} clientId={clientId} clientPhone={client.phone} clientName={client.name} />
 
           {/* משימות מקושרות */}
           <section className="rounded-lg border border-border bg-surface p-4" data-testid="client-linked-tasks">
