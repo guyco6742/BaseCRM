@@ -44,7 +44,8 @@ export default function PaymentsSection({ orgId, clientId, clientPhone }) {
   }
 
   async function checkStatus(p) {
-    const { data } = await supabase.functions.invoke('check-payment-status', { body: { payment_id: p.id } })
+    const { data, error } = await supabase.functions.invoke('check-payment-status', { body: { payment_id: p.id } })
+    if (error || data?.error) { toast('בדיקת הסטטוס נכשלה — נסו שוב.', 'error'); return }
     if (data?.status && data.status !== 'pending') { toast('הסטטוס עודכן'); await load() }
     else toast('עדיין ממתין לתשלום')
   }
