@@ -5,8 +5,10 @@ import Button from '../components/ui/Button'
 import Input from '../components/ui/Input'
 import SetupNotice from '../components/SetupNotice'
 import { handleEnterAsTab } from '../lib/formNav'
+import { useTitle } from '../lib/useTitle'
 
 export default function SignupPage() {
+  useTitle('הרשמה')
   const navigate = useNavigate()
   const location = useLocation()
   // כשמגיעים מתוך הזמנה — האימייל ננעל לכתובת שהוזמנה
@@ -107,8 +109,8 @@ export default function SignupPage() {
             {error && <p className="text-sm text-status-red" data-testid="signup-error">{error}</p>}
             {message && <p className="text-sm text-status-green" data-testid="signup-message">{message}</p>}
 
-            <Button type="submit" className="w-full" disabled={loading} data-testid="signup-submit">
-              {loading ? 'נרשם...' : 'הרשמה'}
+            <Button type="submit" className="w-full" loading={loading} data-testid="signup-submit">
+              הרשמה
             </Button>
 
             <p className="text-center text-sm text-text-muted">

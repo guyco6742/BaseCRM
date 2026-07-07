@@ -5,9 +5,11 @@ import { useAuth } from '../context/AuthContext'
 import Button from '../components/ui/Button'
 import LoadingSpinner from '../components/ui/LoadingSpinner'
 import SetupNotice from '../components/SetupNotice'
+import { useTitle } from '../lib/useTitle'
 
 // דף קבלת הזמנה: /accept-invite?token=...
 export default function AcceptInvitePage() {
+  useTitle('הצטרפות לארגון')
   const [params] = useSearchParams()
   const token = params.get('token')
   const { user, profile, loading: authLoading, refreshProfile } = useAuth()

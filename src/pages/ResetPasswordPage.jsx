@@ -5,8 +5,10 @@ import Button from '../components/ui/Button'
 import Input from '../components/ui/Input'
 import SetupNotice from '../components/SetupNotice'
 import { handleEnterAsTab } from '../lib/formNav'
+import { useTitle } from '../lib/useTitle'
 
 export default function ResetPasswordPage() {
+  useTitle('איפוס סיסמה')
   const navigate = useNavigate()
   const [checkingSession, setCheckingSession] = useState(true)
   const [hasSession, setHasSession] = useState(false)
@@ -97,8 +99,8 @@ export default function ResetPasswordPage() {
 
         {error && <p className="text-sm text-status-red" data-testid="reset-password-error">{error}</p>}
 
-        <Button type="submit" className="w-full" disabled={loading} data-testid="reset-password-submit">
-          {loading ? 'מעדכן...' : 'עדכון סיסמה'}
+        <Button type="submit" className="w-full" loading={loading} data-testid="reset-password-submit">
+          עדכון סיסמה
         </Button>
       </form>
     )
