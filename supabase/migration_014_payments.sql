@@ -23,7 +23,7 @@ create table if not exists public.payments (
   kind text not null default 'one_time' check (kind in ('one_time','subscription_charge')),
   method text check (method in ('credit_card','bit','cash','bank_transfer','check','other')),
   amount numeric(12,2) not null check (amount > 0),
-  currency text not null default 'ILS',
+  currency text not null default 'ILS' check (currency = 'ILS'),
   description text,
   status text not null default 'pending' check (status in ('pending','paid','failed','canceled','refunded')),
   due_date date,
@@ -46,7 +46,7 @@ create table if not exists public.payment_subscriptions (
   client_id uuid not null references public.clients(id) on delete cascade,
   provider_account_id uuid references public.payment_provider_accounts(id),
   amount numeric(12,2) not null check (amount > 0),
-  currency text not null default 'ILS',
+  currency text not null default 'ILS' check (currency = 'ILS'),
   description text,
   day_of_month int check (day_of_month between 1 and 28),
   status text not null default 'active' check (status in ('active','paused','canceled')),
@@ -104,17 +104,26 @@ alter table public.payments enable row level security;
 alter table public.payment_subscriptions enable row level security;
 
 -- חשבון סליקה: אדמינים בלבד (כמו lead_sources)
+drop policy if exists ppa_select on public.payment_provider_accounts;
 create policy ppa_select on public.payment_provider_accounts for select using (public.is_org_admin(org_id));
+drop policy if exists ppa_insert on public.payment_provider_accounts;
 create policy ppa_insert on public.payment_provider_accounts for insert with check (public.is_org_admin(org_id));
+drop policy if exists ppa_update on public.payment_provider_accounts;
 create policy ppa_update on public.payment_provider_accounts for update using (public.is_org_admin(org_id)) with check (public.is_org_admin(org_id));
 -- אין policy למחיקה — מחיקה רכה בלבד
 
 -- תשלומים: כל חברי הארגון
+drop policy if exists payments_select on public.payments;
 create policy payments_select on public.payments for select using (public.is_org_member(org_id));
+drop policy if exists payments_insert on public.payments;
 create policy payments_insert on public.payments for insert with check (public.is_org_member(org_id));
+drop policy if exists payments_update on public.payments;
 create policy payments_update on public.payments for update using (public.is_org_member(org_id)) with check (public.is_org_member(org_id));
 
 -- הוראות קבע: חברי הארגון רואים, אדמינים מנהלים
+drop policy if exists psub_select on public.payment_subscriptions;
 create policy psub_select on public.payment_subscriptions for select using (public.is_org_member(org_id));
+drop policy if exists psub_insert on public.payment_subscriptions;
 create policy psub_insert on public.payment_subscriptions for insert with check (public.is_org_admin(org_id));
+drop policy if exists psub_update on public.payment_subscriptions;
 create policy psub_update on public.payment_subscriptions for update using (public.is_org_admin(org_id)) with check (public.is_org_admin(org_id));
