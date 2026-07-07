@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react'
+import { createContext, useContext, useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from './AuthContext'
@@ -17,6 +17,7 @@ export function OrgProvider({ children }) {
   const [structureVersion, setStructureVersion] = useState(0)
   // חברי הארגון — נטען פעם אחת ומשותף בין הדפים (במקום שכל דף ישלוף בנפרד)
   const [members, setMembers] = useState([])
+  const orgIdRef = useRef(orgId)
 
   const refreshStructure = useCallback(() => setStructureVersion((v) => v + 1), [])
 
@@ -27,18 +28,23 @@ export function OrgProvider({ children }) {
   }, [orgId])
 
   const loadMembers = useCallback(async () => {
+    const forOrg = orgId
     const { data } = await supabase
       .from('memberships')
       .select('user_id, role, profiles(full_name, email, is_super_admin)')
-      .eq('org_id', orgId)
+      .eq('org_id', forOrg)
+    // Bail if the org changed while this request was in flight
+    if (orgIdRef.current !== forOrg) return
     setMembers(data || [])
   }, [orgId])
 
   useEffect(() => {
     let active = true
+    orgIdRef.current = orgId
     async function load() {
       setLoading(true)
       setNotFound(false)
+      setMembers([])
       try {
         const { data: orgData, error } = await supabase
           .from('organizations')
