@@ -45,6 +45,21 @@ describe('payments lib', () => {
     expect(filterPayments(rows, {}).length).toBe(3)
   })
 
+  it('includes payments at the exact local-day boundaries of the from/to range', () => {
+    // new Date(y, m, d, h, m, s) always uses LOCAL time components, so these
+    // moments represent local start-of-day / local end-of-day regardless of
+    // which timezone the test runs in (this repo runs as Asia/Jerusalem).
+    const localStart = new Date(2026, 1, 1, 0, 0, 0)   // local midnight, 2026-02-01
+    const localEnd = new Date(2026, 1, 1, 23, 59, 59)  // local end of day, 2026-02-01
+    const dayBefore = new Date(2026, 0, 31, 23, 59, 59) // local end of day, 2026-01-31
+    const rows = [
+      p({ id: 'start', created_at: localStart.toISOString() }),
+      p({ id: 'end', created_at: localEnd.toISOString() }),
+      p({ id: 'before', created_at: dayBefore.toISOString() }),
+    ]
+    expect(filterPayments(rows, { from: '2026-02-01', to: '2026-02-01' }).map(r => r.id)).toEqual(['start', 'end'])
+  })
+
   it('builds a CSV row matching the headers length', () => {
     const row = paymentToCSVRow(p({ status: 'paid', paid_at: '2026-07-02T08:00:00Z' }), 'משפחת כהן')
     expect(row.length).toBe(PAYMENT_CSV_HEADERS.length)

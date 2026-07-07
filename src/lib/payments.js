@@ -36,7 +36,7 @@ export function filterPayments(payments, { status, clientId, from, to } = {}) {
     if (status && p.status !== status) return false
     if (clientId && p.client_id !== clientId) return false
     const t = new Date(p.created_at).getTime()
-    if (from && t < new Date(from).getTime()) return false
+    if (from && t < new Date(from + 'T00:00:00').getTime()) return false
     if (to && t > new Date(to + 'T23:59:59').getTime()) return false
     return true
   })
