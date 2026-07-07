@@ -2,12 +2,14 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
+import { useTitle } from '../lib/useTitle'
 import LoadingSpinner from '../components/ui/LoadingSpinner'
 import Button from '../components/ui/Button'
 import OrgLogo from '../components/OrgLogo'
 
 export default function DashboardPage() {
   const { user, isSuperAdmin } = useAuth()
+  useTitle('הארגונים שלי')
   const [orgs, setOrgs] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -73,11 +75,11 @@ export default function DashboardPage() {
           className="rounded-lg border border-dashed border-border bg-surface/50 p-10 text-center"
           data-testid="dashboard-empty"
         >
-          <p className="text-text-muted">
-            עדיין אינך חבר באף ארגון.
+          <p className="text-text-muted">עדיין אינך חבר באף ארגון.</p>
+          <p className="mt-2 text-sm text-text-dim">
             {isSuperAdmin
-              ? ' אפשר ליצור ארגון חדש דרך "ניהול ארגונים".'
-              : ' פנה למנהל המערכת כדי לקבל הזמנה.'}
+              ? 'אפשר ליצור ארגון חדש דרך "ניהול ארגונים".'
+              : 'בקשו ממנהל הארגון הזמנה, או פנו למנהל המערכת.'}
           </p>
         </div>
       ) : (

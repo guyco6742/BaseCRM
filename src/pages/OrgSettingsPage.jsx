@@ -3,6 +3,9 @@ import { Navigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useOrg } from '../context/OrgContext'
 import { useAuth } from '../context/AuthContext'
+import { useConfirm } from '../context/ConfirmContext'
+import { useToast } from '../context/ToastContext'
+import { useTitle } from '../lib/useTitle'
 import LoadingSpinner from '../components/ui/LoadingSpinner'
 import Button from '../components/ui/Button'
 import Avatar from '../components/ui/Avatar'
@@ -12,8 +15,11 @@ import ClientStatusManager from '../components/ClientStatusManager'
 import LeadSourcesManager from '../components/crm/LeadSourcesManager'
 
 export default function OrgSettingsPage() {
-  const { orgId, org, isAdmin, loading: orgLoading, refreshOrg } = useOrg()
+  const { orgId, org, isAdmin, loading: orgLoading, refreshOrg, refreshMembers } = useOrg()
   const { user, isSuperAdmin } = useAuth()
+  const confirm = useConfirm()
+  const { toast } = useToast()
+  useTitle('הגדרות ארגון')
   const [members, setMembers] = useState([])
   const [invites, setInvites] = useState([])
   const [loading, setLoading] = useState(true)
@@ -58,19 +64,23 @@ export default function OrgSettingsPage() {
       const { error } = await supabase.from('memberships').update({ role }).eq('id', member.id)
       if (error) throw error
       await load()
+      refreshMembers()
+      toast('התפקיד עודכן בהצלחה')
     } catch {
       setError('עדכון התפקיד נכשל.')
+      toast('עדכון התפקיד נכשל', 'error')
     }
   }
 
   async function deleteUser(member) {
     const label = member.profiles?.full_name || member.profiles?.email
-    if (
-      !window.confirm(
-        `למחוק את ${label}? אם זה הארגון היחיד של המשתמש — החשבון יימחק לצמיתות. אחרת המשתמש יוסר מהארגון הזה בלבד.`
-      )
-    )
-      return
+    const ok = await confirm({
+      title: 'מחיקת משתמש',
+      message: `למחוק את ${label}? אם זה הארגון היחיד של המשתמש — החשבון יימחק לצמיתות. אחרת המשתמש יוסר מהארגון הזה בלבד.`,
+      confirmText: 'מחיקה',
+      danger: true,
+    })
+    if (!ok) return
     try {
       const { data, error } = await supabase.rpc('delete_user', {
         p_user_id: member.user_id,
@@ -79,6 +89,8 @@ export default function OrgSettingsPage() {
       if (error) throw error
       // data === 'account_deleted' | 'removed_from_org'
       await load()
+      refreshMembers()
+      toast(data === 'account_deleted' ? 'החשבון נמחק בהצלחה' : 'המשתמש הוסר מהארגון בהצלחה')
     } catch (e) {
       const messages = {
         'only super admin can delete an admin': 'רק סופר-אדמין יכול למחוק מנהל/ת.',
@@ -86,7 +98,9 @@ export default function OrgSettingsPage() {
         'cannot delete a super admin': 'לא ניתן למחוק סופר-אדמין.',
         'user is not a member of this org': 'המשתמש כבר אינו חבר בארגון זה.',
       }
-      setError(messages[e.message] || 'מחיקת המשתמש נכשלה.')
+      const msg = messages[e.message] || 'מחיקת המשתמש נכשלה.'
+      setError(msg)
+      toast(msg, 'error')
     }
   }
 
@@ -95,8 +109,10 @@ export default function OrgSettingsPage() {
       const { error } = await supabase.from('invitations').delete().eq('id', inv.id)
       if (error) throw error
       await load()
+      toast('ההזמנה בוטלה בהצלחה')
     } catch {
       setError('ביטול ההזמנה נכשל.')
+      toast('ביטול ההזמנה נכשל', 'error')
     }
   }
 
@@ -202,11 +218,12 @@ export default function OrgSettingsPage() {
                     </div>
                     <div className="flex items-center gap-3">
                       <button
-                        onClick={() =>
+                        onClick={() => {
                           navigator.clipboard.writeText(
                             `${window.location.origin}/accept-invite?token=${inv.token}`
                           )
-                        }
+                          toast('הקישור הועתק')
+                        }}
                         className="text-sm text-accent hover:underline"
                       >
                         העתק קישור

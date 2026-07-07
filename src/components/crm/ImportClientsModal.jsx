@@ -1,11 +1,13 @@
 import { useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { parseCSV, mapClientRows, buildClientTemplate } from '../../lib/csv'
+import { useToast } from '../../context/ToastContext'
 import Modal from '../ui/Modal'
 import Button from '../ui/Button'
 
 // ייבוא לקוחות מקובץ CSV: בחירה → תצוגה מקדימה → אישור → ייבוא
 export default function ImportClientsModal({ open, onClose, orgId, statuses, clientFields = [], existingCount, onImported }) {
+  const { toast } = useToast()
   const [stage, setStage] = useState('pick') // pick | preview | importing | done
   const [records, setRecords] = useState([])
   const [warnings, setWarnings] = useState([])
@@ -83,9 +85,11 @@ export default function ImportClientsModal({ open, onClose, orgId, statuses, cli
       setImportedCount(count)
       setStage('done')
       onImported?.()
+      toast(`יובאו ${count} לקוחות`)
     } catch {
       setError('הייבוא נכשל. נסו שוב.')
       setStage('preview')
+      toast('הייבוא נכשל.', 'error')
     }
   }
 

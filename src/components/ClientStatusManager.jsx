@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { LABEL_COLORS } from '../lib/columnTypes'
+import { useConfirm } from '../context/ConfirmContext'
+import { useToast } from '../context/ToastContext'
 import Button from './ui/Button'
 
 // שורת שלב בפייפליין — שם עם טיוטה (נשמר ב-blur), בחירת צבע, סדר והשבתה
@@ -67,6 +69,8 @@ function StatusRow({ status, isFirst, isLast, onRename, onRecolor, onMove, onArc
 
 // ניהול פייפליין הלקוחות של הארגון (אדמין) — מוצג בהגדרות הארגון
 export default function ClientStatusManager({ orgId }) {
+  const confirm = useConfirm()
+  const { toast } = useToast()
   const [statuses, setStatuses] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -100,18 +104,23 @@ export default function ClientStatusManager({ orgId }) {
       color: LABEL_COLORS[active.length % LABEL_COLORS.length],
       position: (active[active.length - 1]?.position ?? 0) + 1,
     })
-    if (error) setError('הוספת השלב נכשלה.')
+    if (error) {
+      setError('הוספת השלב נכשלה.')
+      toast('הוספת השלב נכשלה.', 'error')
+    }
     await load()
   }
 
   async function rename(status, label) {
-    await supabase.from('client_statuses').update({ label }).eq('id', status.id)
+    const { error } = await supabase.from('client_statuses').update({ label }).eq('id', status.id)
     await load()
+    if (error) toast('שינוי שם השלב נכשל.', 'error')
   }
 
   async function recolor(status, color) {
-    await supabase.from('client_statuses').update({ color }).eq('id', status.id)
+    const { error } = await supabase.from('client_statuses').update({ color }).eq('id', status.id)
     await load()
+    if (error) toast('שינוי הצבע נכשל.', 'error')
   }
 
   async function move(status, dir) {
@@ -126,13 +135,24 @@ export default function ClientStatusManager({ orgId }) {
   }
 
   async function archive(status) {
-    await supabase.from('client_statuses').update({ is_archived: true }).eq('id', status.id)
+    const ok = await confirm({
+      title: 'השבתת שלב',
+      message: `להשבית את השלב "${status.label}"? לקוחות בשלב זה יישארו ללא שלב מוצג. ניתן לשחזר בכל עת.`,
+      confirmText: 'השבתה',
+      danger: true,
+    })
+    if (!ok) return
+    const { error } = await supabase.from('client_statuses').update({ is_archived: true }).eq('id', status.id)
     await load()
+    if (error) toast('השבתת השלב נכשלה.', 'error')
+    else toast('השלב הושבת בהצלחה')
   }
 
   async function restore(status) {
-    await supabase.from('client_statuses').update({ is_archived: false }).eq('id', status.id)
+    const { error } = await supabase.from('client_statuses').update({ is_archived: false }).eq('id', status.id)
     await load()
+    if (error) toast('שחזור השלב נכשל.', 'error')
+    else toast('השלב שוחזר בהצלחה')
   }
 
   if (loading) return null

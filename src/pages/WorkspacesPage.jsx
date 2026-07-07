@@ -2,6 +2,9 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useOrg } from '../context/OrgContext'
+import { useConfirm } from '../context/ConfirmContext'
+import { useToast } from '../context/ToastContext'
+import { useTitle } from '../lib/useTitle'
 import LoadingSpinner from '../components/ui/LoadingSpinner'
 import Button from '../components/ui/Button'
 import Modal from '../components/ui/Modal'
@@ -11,6 +14,9 @@ import { handleEnterAsTab } from '../lib/formNav'
 
 export default function WorkspacesPage() {
   const { orgId, isAdmin, structureVersion, refreshStructure } = useOrg()
+  const confirm = useConfirm()
+  const { toast } = useToast()
+  useTitle('וורקספייסים')
   const [workspaces, setWorkspaces] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -80,8 +86,10 @@ export default function WorkspacesPage() {
       setModalOpen(false)
       refreshStructure()
       await load()
+      toast(editing ? 'הוורקספייס עודכן בהצלחה' : 'הוורקספייס נוצר בהצלחה')
     } catch {
       setError('שמירת הוורקספייס נכשלה.')
+      toast('שמירת הוורקספייס נכשלה', 'error')
     } finally {
       setSaving(false)
     }
@@ -89,14 +97,22 @@ export default function WorkspacesPage() {
 
   // השבתה — הוורקספייס וכל תוכנו נשמרים ב-DB וניתנים לשחזור
   async function handleArchive(ws) {
-    if (!window.confirm(`להשבית את הוורקספייס "${ws.name}"? הבורדים והנתונים יישמרו וניתן לשחזר.`)) return
+    const ok = await confirm({
+      title: 'השבתת וורקספייס',
+      message: `להשבית את הוורקספייס "${ws.name}"? הבורדים והנתונים יישמרו וניתן לשחזר.`,
+      confirmText: 'השבתה',
+      danger: true,
+    })
+    if (!ok) return
     try {
       const { error } = await supabase.from('workspaces').update({ is_archived: true }).eq('id', ws.id)
       if (error) throw error
       refreshStructure()
       await load()
+      toast('הוורקספייס הושבת בהצלחה')
     } catch {
       setError('השבתת הוורקספייס נכשלה.')
+      toast('השבתת הוורקספייס נכשלה', 'error')
     }
   }
 
@@ -106,8 +122,10 @@ export default function WorkspacesPage() {
       if (error) throw error
       refreshStructure()
       await load()
+      toast('הוורקספייס שוחזר בהצלחה')
     } catch {
       setError('שחזור הוורקספייס נכשל.')
+      toast('שחזור הוורקספייס נכשל', 'error')
     }
   }
 
@@ -130,10 +148,13 @@ export default function WorkspacesPage() {
       {loading ? (
         <LoadingSpinner label="טוען..." />
       ) : activeWorkspaces.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border bg-surface/50 p-10 text-center text-text-muted">
-          {isAdmin
-            ? 'אין עדיין וורקספייסים. צרו את הראשון — למשל "מכירות" או "פיתוח".'
-            : 'אין עדיין וורקספייסים בארגון זה.'}
+        <div className="rounded-lg border border-dashed border-border bg-surface/50 p-10 text-center">
+          <p className="mb-4 text-text-muted">
+            {isAdmin
+              ? 'אין עדיין וורקספייסים. צרו את הראשון — למשל "מכירות" או "פיתוח".'
+              : 'אין עדיין וורקספייסים בארגון זה.'}
+          </p>
+          {isAdmin && <Button onClick={openCreate}>+ וורקספייס חדש</Button>}
         </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -243,8 +264,8 @@ export default function WorkspacesPage() {
             </div>
           </div>
           <div className="flex justify-start gap-2">
-            <Button type="submit" disabled={saving || !name.trim()} data-testid="workspace-save-btn">
-              {saving ? 'שומר...' : editing ? 'שמירה' : 'יצירה'}
+            <Button type="submit" disabled={!name.trim()} loading={saving} data-testid="workspace-save-btn">
+              {editing ? 'שמירה' : 'יצירה'}
             </Button>
             <Button type="button" variant="ghost" onClick={() => setModalOpen(false)}>
               ביטול

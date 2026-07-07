@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { formatDateTime } from '../../lib/columnTypes'
+import { useConfirm } from '../../context/ConfirmContext'
+import { useToast } from '../../context/ToastContext'
 import Button from '../ui/Button'
 import Modal from '../ui/Modal'
 import Input from '../ui/Input'
@@ -46,6 +48,8 @@ function CopyRow({ label, value, testid }) {
 
 // ניהול מקורות לידים של הארגון (אדמין) — מוצג בהגדרות הארגון
 export default function LeadSourcesManager({ orgId }) {
+  const confirm = useConfirm()
+  const { toast } = useToast()
   const [sources, setSources] = useState([])
   const [recentLeads, setRecentLeads] = useState([])
   const [loading, setLoading] = useState(true)
@@ -99,6 +103,7 @@ export default function LeadSourcesManager({ orgId }) {
       setNewName('')
       await load()
       setConnectSource(data) // פותחים מיד את הוראות החיבור
+      toast('המקור נוצר בהצלחה')
     } catch {
       setError('יצירת המקור נכשלה.')
     } finally {
@@ -107,14 +112,32 @@ export default function LeadSourcesManager({ orgId }) {
   }
 
   async function toggleActive(src) {
-    await supabase.from('lead_sources').update({ is_active: !src.is_active }).eq('id', src.id)
+    const { error } = await supabase.from('lead_sources').update({ is_active: !src.is_active }).eq('id', src.id)
+    if (error) {
+      toast('עדכון המקור נכשל.', 'error')
+      return
+    }
     await load()
   }
 
   async function archiveSource(src) {
-    if (!window.confirm(`להשבית את המקור "${src.name}"? לידים חדשים ממנו יידחו.`)) return
-    await supabase.from('lead_sources').update({ is_archived: true, is_active: false }).eq('id', src.id)
+    const ok = await confirm({
+      title: 'השבתת מקור לידים',
+      message: `להשבית את המקור "${src.name}"? לידים חדשים ממנו יידחו.`,
+      confirmText: 'השבתה',
+      danger: true,
+    })
+    if (!ok) return
+    const { error } = await supabase
+      .from('lead_sources')
+      .update({ is_archived: true, is_active: false })
+      .eq('id', src.id)
+    if (error) {
+      toast('השבתת המקור נכשלה.', 'error')
+      return
+    }
     await load()
+    toast('המקור הושבת בהצלחה')
   }
 
   const supaUrl = import.meta.env.VITE_SUPABASE_URL
@@ -142,8 +165,13 @@ export default function LeadSourcesManager({ orgId }) {
       {error && <p className="mb-2 text-sm text-status-red">{error}</p>}
 
       {activeSources.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border bg-surface/50 p-6 text-center text-sm text-text-muted">
-          אין עדיין מקורות לידים. צרו מקור ראשון — למשל "פייסבוק - קמפיין ראשי".
+        <div className="rounded-lg border border-dashed border-border bg-surface/50 p-6 text-center">
+          <p className="mb-4 text-sm text-text-muted">
+            אין עדיין מקורות לידים. צרו מקור ראשון — למשל "פייסבוק - קמפיין ראשי".
+          </p>
+          <Button size="sm" onClick={() => setAddOpen(true)} data-testid="lead-source-empty-add-btn">
+            + מקור לידים
+          </Button>
         </div>
       ) : (
         <div className="space-y-1">
@@ -257,8 +285,13 @@ export default function LeadSourcesManager({ orgId }) {
             </select>
           </label>
           <div className="flex justify-start gap-2">
-            <Button type="submit" disabled={saving || !newName.trim()} data-testid="lead-source-create-submit">
-              {saving ? 'יוצר...' : 'צור מקור'}
+            <Button
+              type="submit"
+              disabled={!newName.trim()}
+              loading={saving}
+              data-testid="lead-source-create-submit"
+            >
+              צור מקור
             </Button>
             <Button type="button" variant="ghost" onClick={() => setAddOpen(false)}>
               ביטול

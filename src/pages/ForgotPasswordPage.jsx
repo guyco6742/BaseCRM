@@ -5,8 +5,10 @@ import Button from '../components/ui/Button'
 import Input from '../components/ui/Input'
 import SetupNotice from '../components/SetupNotice'
 import { handleEnterAsTab } from '../lib/formNav'
+import { useTitle } from '../lib/useTitle'
 
 export default function ForgotPasswordPage() {
+  useTitle('שחזור סיסמה')
   const [email, setEmail] = useState('')
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
@@ -68,8 +70,8 @@ export default function ForgotPasswordPage() {
             {error && <p className="text-sm text-status-red" data-testid="forgot-password-error">{error}</p>}
             {message && <p className="text-sm text-status-green" data-testid="forgot-password-message">{message}</p>}
 
-            <Button type="submit" className="w-full" disabled={loading} data-testid="forgot-password-submit">
-              {loading ? 'שולח...' : 'שליחת קישור לאיפוס'}
+            <Button type="submit" className="w-full" loading={loading} data-testid="forgot-password-submit">
+              שליחת קישור לאיפוס
             </Button>
 
             <p className="text-center text-sm text-text-muted">

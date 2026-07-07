@@ -1,12 +1,47 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
+
+const FOCUSABLE = 'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
 
 export default function Modal({ open, onClose, title, children, footer, size = 'md', testid }) {
+  const panelRef = useRef(null)
+  const prevFocusRef = useRef(null)
+  const onCloseRef = useRef(onClose)
+  onCloseRef.current = onClose
+
   useEffect(() => {
     if (!open) return
-    const onKey = (e) => e.key === 'Escape' && onClose?.()
+    prevFocusRef.current = document.activeElement
+
+    // מיקוד ראשוני: שדה הקלט הראשון, ואם אין — הפאנל עצמו
+    const panel = panelRef.current
+    const focusables = panel ? [...panel.querySelectorAll(FOCUSABLE)] : []
+    const firstInput = focusables.find((el) => ['INPUT', 'SELECT', 'TEXTAREA'].includes(el.tagName))
+    ;(firstInput || focusables[0] || panel)?.focus()
+
+    const onKey = (e) => {
+      if (e.key === 'Escape') {
+        onCloseRef.current?.()
+        return
+      }
+      if (e.key !== 'Tab' || !panelRef.current) return
+      const els = [...panelRef.current.querySelectorAll(FOCUSABLE)]
+      if (els.length === 0) return
+      const first = els[0]
+      const last = els[els.length - 1]
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault()
+        last.focus()
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault()
+        first.focus()
+      }
+    }
     window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [open, onClose])
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      prevFocusRef.current?.focus?.()
+    }
+  }, [open])
 
   if (!open) return null
 
@@ -18,6 +53,11 @@ export default function Modal({ open, onClose, title, children, footer, size = '
       onClick={onClose}
     >
       <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={typeof title === 'string' ? title : undefined}
+        tabIndex={-1}
         className={`w-full ${maxW} rounded-lg border border-border bg-surface shadow-xl`}
         onClick={(e) => e.stopPropagation()}
         data-testid={testid}

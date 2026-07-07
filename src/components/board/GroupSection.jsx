@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { memo, useCallback, useEffect, useState } from 'react'
 import BoardCell from './BoardCell'
 
 // שם פריט עם טיוטה מקומית — נשמר ל-DB רק בסיום עריכה (blur/Enter),
@@ -32,8 +32,41 @@ function ItemNameInput({ item, canEdit, onName }) {
   )
 }
 
-// שורת פריט בודדת
-function ItemRow({ item, columns, members, clients, orgId, gridTemplate, canEdit, onName, onValue, onArchive }) {
+// עטיפה לתא בודד — מקבלת item/col + handler יציב (onValue) ומרכיבה את
+// ה-onChange פנימית, כדי ש-BoardCell (memo) יקבל callback יציב לכל תא
+// ולא ייצור מחדש בכל רינדור של השורה.
+const BoardCellItem = memo(function BoardCellItem({ column, item, orgId, members, clients, canEdit, onValue }) {
+  const handleChange = useCallback((v) => onValue(item, column.id, v), [onValue, item, column.id])
+
+  return (
+    <BoardCell
+      column={column}
+      item={item}
+      orgId={orgId}
+      value={item.values?.[column.id]}
+      members={members}
+      clients={clients}
+      canEdit={canEdit}
+      onChange={handleChange}
+    />
+  )
+})
+
+// שורת פריט בודדת — ממוזגת (memo) כדי שרק שורות שהמידע שלהן השתנה יתעדכנו
+const ItemRow = memo(function ItemRow({
+  item,
+  columns,
+  members,
+  clients,
+  orgId,
+  gridTemplate,
+  canEdit,
+  onName,
+  onValue,
+  onArchive,
+}) {
+  const handleArchive = useCallback(() => onArchive(item), [onArchive, item])
+
   return (
     <div
       className="grid items-stretch border-b border-border bg-surface hover:bg-surface-2"
@@ -52,15 +85,14 @@ function ItemRow({ item, columns, members, clients, orgId, gridTemplate, canEdit
           className="border-e border-border"
           data-testid={`cell-${col.type}-${item.id}-${col.id}`}
         >
-          <BoardCell
+          <BoardCellItem
             column={col}
             item={item}
             orgId={orgId}
-            value={item.values?.[col.id]}
             members={members}
             clients={clients}
             canEdit={canEdit}
-            onChange={(v) => onValue(item, col.id, v)}
+            onValue={onValue}
           />
         </div>
       ))}
@@ -69,7 +101,7 @@ function ItemRow({ item, columns, members, clients, orgId, gridTemplate, canEdit
       <div className="flex items-center justify-center">
         {canEdit && (
           <button
-            onClick={() => onArchive(item)}
+            onClick={handleArchive}
             className="text-text-dim hover:text-status-red"
             title="השבת פריט (ניתן לשחזור)"
             data-testid={`item-archive-${item.id}`}
@@ -80,7 +112,7 @@ function ItemRow({ item, columns, members, clients, orgId, gridTemplate, canEdit
       </div>
     </div>
   )
-}
+})
 
 export default function GroupSection({
   group,
