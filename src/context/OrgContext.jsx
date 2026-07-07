@@ -18,6 +18,7 @@ export function OrgProvider({ children }) {
   // חברי הארגון — נטען פעם אחת ומשותף בין הדפים (במקום שכל דף ישלוף בנפרד)
   const [members, setMembers] = useState([])
   const orgIdRef = useRef(orgId)
+  const [favorite, setFavoriteState] = useState(null)
 
   const refreshStructure = useCallback(() => setStructureVersion((v) => v + 1), [])
 
@@ -37,6 +38,50 @@ export function OrgProvider({ children }) {
     if (orgIdRef.current !== forOrg) return
     if (data) setMembers(data)
   }, [orgId])
+
+  // טוען את המועדף האישי של המשתמש לארגון הזה (בורד או עמוד לקוחות), אם קיים ותקף
+  const loadFavorite = useCallback(async (isActive) => {
+    const { data } = await supabase
+      .from('user_favorites')
+      .select('favorite_type, board_id, boards(is_archived)')
+      .eq('org_id', orgId)
+      .eq('user_id', user.id)
+      .maybeSingle()
+    if (!isActive()) return
+    if (!data) {
+      setFavoriteState(null)
+      return
+    }
+    if (data.favorite_type === 'clients') {
+      setFavoriteState({ type: 'clients' })
+      return
+    }
+    if (data.favorite_type === 'board' && data.boards && !data.boards.is_archived) {
+      setFavoriteState({ type: 'board', boardId: data.board_id })
+      return
+    }
+    setFavoriteState(null)
+  }, [orgId, user.id])
+
+  // next = null (מבטל), { type: 'clients' }, או { type: 'board', boardId }
+  const setFavorite = useCallback(
+    async (next) => {
+      if (next === null) {
+        const { error } = await supabase.from('user_favorites').delete().eq('org_id', orgId).eq('user_id', user.id)
+        if (!error) setFavoriteState(null)
+        return
+      }
+      const row = {
+        user_id: user.id,
+        org_id: orgId,
+        favorite_type: next.type,
+        board_id: next.type === 'board' ? next.boardId : null,
+      }
+      const { error } = await supabase.from('user_favorites').upsert(row, { onConflict: 'user_id,org_id' })
+      if (!error) setFavoriteState(next)
+    },
+    [orgId, user.id]
+  )
 
   useEffect(() => {
     let active = true
@@ -71,6 +116,7 @@ export function OrgProvider({ children }) {
         setOrg(orgData)
         setRole(membership?.role ?? (isSuperAdmin ? 'admin' : null))
         loadMembers()
+        await loadFavorite(() => active)
       } finally {
         if (active) setLoading(false)
       }
@@ -79,7 +125,7 @@ export function OrgProvider({ children }) {
     return () => {
       active = false
     }
-  }, [orgId, user.id, isSuperAdmin, loadMembers])
+  }, [orgId, user.id, isSuperAdmin, loadMembers, loadFavorite])
 
   const value = useMemo(() => ({
     orgId,
@@ -93,6 +139,8 @@ export function OrgProvider({ children }) {
     refreshOrg,
     members,
     refreshMembers: loadMembers,
+    favorite,
+    setFavorite,
   }), [
     orgId,
     org,
@@ -105,6 +153,8 @@ export function OrgProvider({ children }) {
     refreshOrg,
     members,
     loadMembers,
+    favorite,
+    setFavorite,
   ])
 
   return <OrgContext.Provider value={value}>{children}</OrgContext.Provider>

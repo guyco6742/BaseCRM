@@ -19,6 +19,7 @@ import ArchivedModal from '../components/board/ArchivedModal'
 import { LABEL_COLORS, formatColumnValue } from '../lib/columnTypes'
 import { handleEnterAsTab } from '../lib/formNav'
 import { exportRowsToCSV, downloadCSV } from '../lib/csv'
+import FavoriteStarButton from '../components/FavoriteStarButton'
 
 export default function BoardPage() {
   const { boardId } = useParams()
@@ -377,6 +378,7 @@ export default function BoardPage() {
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <h1 className="text-2xl font-bold text-text" data-testid="board-title">{board?.name}</h1>
+          <FavoriteStarButton type="board" boardId={boardId} />
 
           {/* טוגל טבלה / קנבן */}
           <div className="flex overflow-hidden rounded-md border border-border" data-testid="board-view-toggle">

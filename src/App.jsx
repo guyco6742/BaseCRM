@@ -12,7 +12,7 @@ const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'))
 const AcceptInvitePage = lazy(() => import('./pages/AcceptInvitePage'))
 const DashboardPage = lazy(() => import('./pages/DashboardPage'))
 const AdminPage = lazy(() => import('./pages/AdminPage'))
-const WorkspacesPage = lazy(() => import('./pages/WorkspacesPage'))
+const OrgHomePage = lazy(() => import('./pages/OrgHomePage'))
 const BoardsPage = lazy(() => import('./pages/BoardsPage'))
 const BoardPage = lazy(() => import('./pages/BoardPage'))
 const ClientsPage = lazy(() => import('./pages/ClientsPage'))
@@ -45,7 +45,7 @@ export default function App() {
 
         {/* מרחב הארגון — עם סרגל צד וקונטקסט ארגון */}
         <Route path="/org/:orgId" element={<OrgLayout />}>
-          <Route index element={<WorkspacesPage />} />
+          <Route index element={<OrgHomePage />} />
           <Route path="workspace/:wsId" element={<BoardsPage />} />
           <Route path="board/:boardId" element={<BoardPage />} />
           <Route path="clients" element={<ClientsPage />} />
