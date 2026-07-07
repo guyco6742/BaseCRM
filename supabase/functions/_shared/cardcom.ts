@@ -36,7 +36,7 @@ export async function createPaymentLink(creds: CardcomCreds, p: CreateLinkParams
   if (p.autoInvoice) {
     // אין ערך Operation ייעודי להנפקת מסמך — היא מופעלת רק ע"י נוכחות אובייקט Document
     body.Document = {
-      Name: p.clientName || 'לקוח',
+      Name: (p.clientName || 'לקוח').slice(0, 50),
       Email: p.clientEmail || undefined,
       DocumentTypeToCreate: 'TaxInvoiceAndReceipt', // חשבונית מס/קבלה
       IsSendByEmail: true,
@@ -63,6 +63,13 @@ export async function verifyTransaction(creds: CardcomCreds, providerRef: string
   // הצלחה = ResponseCode עליון 0 (הקריאה עצמה תקינה) וגם TranzactionInfo.ResponseCode 0 (החיוב עצמו הצליח)
   const paid = data.ResponseCode === 0 && data.TranzactionInfo?.ResponseCode === 0
   const failed = data.ResponseCode === 0 && data.TranzactionInfo && data.TranzactionInfo.ResponseCode !== 0
+  // מקרה קצה בעל משמעות רגולטורית/תאימות: החיוב הצליח אבל הנפקת החשבונית נכשלה.
+  // לא משנים את הסטטוס המוחזר (העסקה אכן הצליחה) — רק חושפים את הכשל ביומן כדי שמישהו יטפל בזה ידנית.
+  if (data.DocumentInfo && data.DocumentInfo.ResponseCode) {
+    console.error(
+      `cardcom: charge succeeded but invoice issuance failed — LowProfileId=${providerRef} DocumentInfo.ResponseCode=${data.DocumentInfo.ResponseCode} Description=${data.DocumentInfo.Description ?? ''}`,
+    )
+  }
   return {
     status: paid ? 'paid' : failed ? 'failed' : 'pending',
     paidAt: paid ? new Date().toISOString() : undefined,

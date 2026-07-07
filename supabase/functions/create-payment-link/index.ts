@@ -5,7 +5,7 @@ Deno.serve(async (req) => {
   const pre = corsPreflight(req); if (pre) return pre
   try {
     const { org_id, client_id, amount, description, max_installments } = await req.json()
-    if (!org_id || !client_id || !amount || Number(amount) <= 0) return json({ error: 'bad request' }, 400)
+    if (!org_id || !client_id || !amount || !Number.isFinite(Number(amount)) || Number(amount) <= 0) return json({ error: 'bad request' }, 400)
 
     const auth = await requireOrgMember(req, org_id)
     if (auth instanceof Response) return auth
