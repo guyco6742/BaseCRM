@@ -31,7 +31,8 @@ export default function PaymentProviderManager({ orgId }) {
     }
     setLoading(false)
   }
-  useEffect(() => { load() /* eslint-disable-line react-hooks/exhaustive-deps */ }, [orgId])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { load() }, [orgId])
 
   async function save(e) {
     e.preventDefault()
@@ -73,8 +74,12 @@ export default function PaymentProviderManager({ orgId }) {
       if (error || data?.error) throw new Error(data?.error || error.message)
       setTestUrl(data.url)
       // מארכבים את תשלום-הבדיקה מיד כדי שלא יזהם את היומן
-      await supabase.from('payments').update({ is_archived: true }).eq('id', data.payment_id)
-      toast('החיבור תקין ✓')
+      const { error: archiveError } = await supabase.from('payments').update({ is_archived: true }).eq('id', data.payment_id)
+      if (archiveError) {
+        toast('החיבור תקין, אך ניקוי תשלום הבדיקה נכשל — ארכבו אותו ידנית מדף התשלומים.', 'error')
+      } else {
+        toast('החיבור תקין ✓')
+      }
     } catch {
       toast('בדיקת החיבור נכשלה — בדקו את פרטי ה-API.', 'error')
     } finally {
