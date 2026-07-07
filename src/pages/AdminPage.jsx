@@ -2,6 +2,9 @@ import { useEffect, useState } from 'react'
 import { Link, Navigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
+import { useConfirm } from '../context/ConfirmContext'
+import { useToast } from '../context/ToastContext'
+import { useTitle } from '../lib/useTitle'
 import LoadingSpinner from '../components/ui/LoadingSpinner'
 import Button from '../components/ui/Button'
 import Modal from '../components/ui/Modal'
@@ -17,6 +20,9 @@ function slugify(name) {
 
 export default function AdminPage() {
   const { user, isSuperAdmin, loading: authLoading } = useAuth()
+  const confirm = useConfirm()
+  const { toast } = useToast()
+  useTitle('ניהול-על')
   const [orgs, setOrgs] = useState([])
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
@@ -75,6 +81,7 @@ export default function AdminPage() {
       setCreateOpen(false)
       setNewName('')
       await load()
+      toast('הארגון נוצר בהצלחה')
     } catch {
       setError('יצירת הארגון נכשלה.')
     } finally {
@@ -84,13 +91,21 @@ export default function AdminPage() {
 
   // השבתת ארגון — כל הנתונים נשמרים, החברים מאבדים גישה עד שחזור
   async function handleArchive(org) {
-    if (!window.confirm(`להשבית את הארגון "${org.name}"? הנתונים יישמרו וניתן לשחזר בכל עת.`)) return
+    const ok = await confirm({
+      title: 'השבתת ארגון',
+      message: `להשבית את הארגון "${org.name}"? הנתונים יישמרו וניתן לשחזר בכל עת.`,
+      confirmText: 'השבתה',
+      danger: true,
+    })
+    if (!ok) return
     try {
       const { error } = await supabase.from('organizations').update({ is_archived: true }).eq('id', org.id)
       if (error) throw error
       await load()
+      toast('הארגון הושבת בהצלחה')
     } catch {
       setError('השבתת הארגון נכשלה.')
+      toast('השבתת הארגון נכשלה', 'error')
     }
   }
 
@@ -106,6 +121,7 @@ export default function AdminPage() {
       await load()
     } catch {
       setError('עדכון התכונה נכשל.')
+      toast('עדכון התכונה נכשל', 'error')
     }
   }
 
@@ -114,39 +130,56 @@ export default function AdminPage() {
       const { error } = await supabase.from('organizations').update({ is_archived: false }).eq('id', org.id)
       if (error) throw error
       await load()
+      toast('הארגון שוחזר בהצלחה')
     } catch {
       setError('שחזור הארגון נכשל.')
+      toast('שחזור הארגון נכשל', 'error')
     }
   }
 
-  // מחיקה לצמיתות — רק מארגון שכבר הושבת, עם אישור כפול
+  // מחיקה לצמיתות — רק מארגון שכבר הושבת
   async function handleHardDelete(org) {
-    if (!window.confirm(`למחוק לצמיתות את "${org.name}" וכל הנתונים שלו? פעולה זו בלתי הפיכה!`)) return
-    if (!window.confirm('אישור אחרון: כל הוורקספייסים, הבורדים והפריטים יימחקו לתמיד. להמשיך?')) return
+    const ok = await confirm({
+      title: 'מחיקה לצמיתות',
+      message: `למחוק לצמיתות את "${org.name}" וכל הנתונים שלו? כל הוורקספייסים, הבורדים והפריטים יימחקו לתמיד. פעולה זו בלתי הפיכה!`,
+      confirmText: 'מחיקה לצמיתות',
+      danger: true,
+    })
+    if (!ok) return
     try {
       const { error } = await supabase.from('organizations').delete().eq('id', org.id)
       if (error) throw error
       await load()
+      toast('הארגון נמחק לצמיתות')
     } catch {
       setError('מחיקת הארגון נכשלה.')
+      toast('מחיקת הארגון נכשלה', 'error')
     }
   }
 
   async function handleDeleteAccount(u) {
     const label = u.full_name || u.email
-    if (!window.confirm(`למחוק לצמיתות את החשבון של ${label}? פעולה בלתי הפיכה!`)) return
-    if (!window.confirm('אישור אחרון: החשבון וכל החברויות שלו יימחקו לתמיד. להמשיך?')) return
+    const ok = await confirm({
+      title: 'מחיקת חשבון לצמיתות',
+      message: `למחוק לצמיתות את החשבון של ${label}? החשבון וכל החברויות שלו יימחקו לתמיד. פעולה זו בלתי הפיכה!`,
+      confirmText: 'מחיקה לצמיתות',
+      danger: true,
+    })
+    if (!ok) return
     try {
       const { error } = await supabase.rpc('delete_user_account', { p_user_id: u.id })
       if (error) throw error
       await load()
+      toast('החשבון נמחק בהצלחה')
     } catch (e) {
       const messages = {
         'not authorized': 'אין הרשאה למחוק משתמש זה.',
         'cannot delete yourself': 'לא ניתן למחוק את החשבון שלך.',
         'cannot delete a super admin': 'לא ניתן למחוק סופר-אדמין.',
       }
-      setError(messages[e.message] || 'מחיקת החשבון נכשלה.')
+      const msg = messages[e.message] || 'מחיקת החשבון נכשלה.'
+      setError(msg)
+      toast(msg, 'error')
     }
   }
 
@@ -319,8 +352,13 @@ export default function AdminPage() {
             data-testid="admin-org-name-input"
           />
           <div className="flex justify-start gap-2">
-            <Button type="submit" disabled={saving || !newName.trim()} data-testid="admin-create-org-submit">
-              {saving ? 'יוצר...' : 'צור ארגון'}
+            <Button
+              type="submit"
+              disabled={!newName.trim()}
+              loading={saving}
+              data-testid="admin-create-org-submit"
+            >
+              צור ארגון
             </Button>
             <Button type="button" variant="ghost" onClick={() => setCreateOpen(false)}>
               ביטול

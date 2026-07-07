@@ -5,8 +5,10 @@ import Button from '../components/ui/Button'
 import Input from '../components/ui/Input'
 import SetupNotice from '../components/SetupNotice'
 import { handleEnterAsTab } from '../lib/formNav'
+import { useTitle } from '../lib/useTitle'
 
 export default function LoginPage() {
+  useTitle('התחברות')
   const navigate = useNavigate()
   const location = useLocation()
   const [email, setEmail] = useState(location.state?.inviteEmail || '')
@@ -85,8 +87,8 @@ export default function LoginPage() {
             {message && <p className="text-sm text-status-green" data-testid="login-reset-message">{message}</p>}
             {error && <p className="text-sm text-status-red" data-testid="login-error">{error}</p>}
 
-            <Button type="submit" className="w-full" disabled={loading} data-testid="login-submit">
-              {loading ? 'מתחבר...' : 'כניסה'}
+            <Button type="submit" className="w-full" loading={loading} data-testid="login-submit">
+              כניסה
             </Button>
 
             <p className="text-center text-sm text-text-muted">

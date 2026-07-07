@@ -1,27 +1,30 @@
+import { lazy, Suspense } from 'react'
 import { Routes, Route } from 'react-router-dom'
 import ProtectedRoute from './components/ProtectedRoute'
 import Layout from './components/Layout'
-
 import OrgLayout from './components/OrgLayout'
-import LoginPage from './pages/LoginPage'
-import SignupPage from './pages/SignupPage'
-import ForgotPasswordPage from './pages/ForgotPasswordPage'
-import ResetPasswordPage from './pages/ResetPasswordPage'
-import AcceptInvitePage from './pages/AcceptInvitePage'
-import DashboardPage from './pages/DashboardPage'
-import AdminPage from './pages/AdminPage'
-import WorkspacesPage from './pages/WorkspacesPage'
-import BoardsPage from './pages/BoardsPage'
-import BoardPage from './pages/BoardPage'
-import ClientsPage from './pages/ClientsPage'
-import ClientPage from './pages/ClientPage'
-import OrgSettingsPage from './pages/OrgSettingsPage'
-import SendContractPage from './pages/SendContractPage'
-import NotFoundPage from './pages/NotFoundPage'
+import LoadingSpinner from './components/ui/LoadingSpinner'
+
+const LoginPage = lazy(() => import('./pages/LoginPage'))
+const SignupPage = lazy(() => import('./pages/SignupPage'))
+const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage'))
+const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'))
+const AcceptInvitePage = lazy(() => import('./pages/AcceptInvitePage'))
+const DashboardPage = lazy(() => import('./pages/DashboardPage'))
+const AdminPage = lazy(() => import('./pages/AdminPage'))
+const OrgHomePage = lazy(() => import('./pages/OrgHomePage'))
+const BoardsPage = lazy(() => import('./pages/BoardsPage'))
+const BoardPage = lazy(() => import('./pages/BoardPage'))
+const ClientsPage = lazy(() => import('./pages/ClientsPage'))
+const ClientPage = lazy(() => import('./pages/ClientPage'))
+const OrgSettingsPage = lazy(() => import('./pages/OrgSettingsPage'))
+const SendContractPage = lazy(() => import('./pages/SendContractPage'))
+const NotFoundPage = lazy(() => import('./pages/NotFoundPage'))
 
 export default function App() {
   return (
-    <Routes>
+    <Suspense fallback={<div className="flex min-h-screen items-center justify-center"><LoadingSpinner label="טוען..." /></div>}>
+      <Routes>
       {/* ציבורי */}
       <Route path="/login" element={<LoginPage />} />
       <Route path="/signup" element={<SignupPage />} />
@@ -42,7 +45,7 @@ export default function App() {
 
         {/* מרחב הארגון — עם סרגל צד וקונטקסט ארגון */}
         <Route path="/org/:orgId" element={<OrgLayout />}>
-          <Route index element={<WorkspacesPage />} />
+          <Route index element={<OrgHomePage />} />
           <Route path="workspace/:wsId" element={<BoardsPage />} />
           <Route path="board/:boardId" element={<BoardPage />} />
           <Route path="clients" element={<ClientsPage />} />
@@ -54,5 +57,6 @@ export default function App() {
 
       <Route path="*" element={<NotFoundPage />} />
     </Routes>
+    </Suspense>
   )
 }

@@ -1,7 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useOrg } from '../context/OrgContext'
+import { useConfirm } from '../context/ConfirmContext'
+import { useToast } from '../context/ToastContext'
+import { useTitle } from '../lib/useTitle'
 import LoadingSpinner from '../components/ui/LoadingSpinner'
 import Button from '../components/ui/Button'
 import Modal from '../components/ui/Modal'
@@ -55,14 +58,15 @@ function EditableField({ label, value, onSave, type = 'text', textarea = false, 
 
 export default function ClientPage() {
   const { clientId } = useParams()
-  const { orgId, isAdmin } = useOrg()
+  const { orgId, isAdmin, members: orgMembers } = useOrg()
   const navigate = useNavigate()
+  const confirm = useConfirm()
+  const { toast } = useToast()
 
   const [client, setClient] = useState(null)
   const [statuses, setStatuses] = useState([])
   const [fields, setFields] = useState([])
   const [contacts, setContacts] = useState([])
-  const [members, setMembers] = useState([])
   const [linkedItems, setLinkedItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -71,32 +75,24 @@ export default function ClientPage() {
   const [editingContact, setEditingContact] = useState(null)
   const [contactDraft, setContactDraft] = useState({ name: '', role: '', phone: '', email: '' })
   const [savingContact, setSavingContact] = useState(false)
+  const [archivingClient, setArchivingClient] = useState(false)
+
+  useTitle(client?.name)
 
   async function load() {
     setLoading(true)
     try {
-      const [cRes, sRes, fRes, ctRes, mRes] = await Promise.all([
+      const [cRes, sRes, fRes, ctRes] = await Promise.all([
         supabase.from('clients').select('*').eq('id', clientId).maybeSingle(),
         supabase.from('client_statuses').select('*').eq('org_id', orgId).eq('is_archived', false).order('position'),
         supabase.from('client_fields').select('*').eq('org_id', orgId).eq('is_archived', false).order('position'),
         supabase.from('contacts').select('*').eq('client_id', clientId).eq('is_archived', false).order('position'),
-        supabase.from('memberships').select('user_id, profiles(full_name, email, is_super_admin)').eq('org_id', orgId),
       ])
       if (cRes.error || !cRes.data) throw cRes.error || new Error('not found')
       setClient(cRes.data)
       setStatuses(sRes.data || [])
       setFields(fRes.data || [])
       setContacts(ctRes.data || [])
-      // סופר-אדמין שקוף לארגון — לא מופיע כבחירה ב"אחראי לקוח"
-      setMembers(
-        (mRes.data || [])
-          .filter((m) => !m.profiles?.is_super_admin)
-          .map((m) => ({
-            user_id: m.user_id,
-            full_name: m.profiles?.full_name,
-            email: m.profiles?.email,
-          }))
-      )
 
       // משימות מקושרות — פריטים שבעמודת "לקוח" שלהם מופיע הלקוח הזה
       const { data: clientCols } = await supabase
@@ -105,18 +101,35 @@ export default function ClientPage() {
         .eq('org_id', orgId)
         .eq('type', 'client')
         .eq('is_archived', false)
-      const results = await Promise.all(
-        (clientCols || []).map((col) =>
-          supabase
-            .from('items')
-            .select('id, name, board_id, created_at, boards(name)')
-            .eq('org_id', orgId)
-            .eq('is_archived', false)
-            .contains('values', { [col.id]: clientId })
-        )
-      )
+
+      let linked = []
+      if (clientCols?.length) {
+        const orExpr = clientCols.map((c) => `values->>${c.id}.eq.${clientId}`).join(',')
+        const { data, error: orError } = await supabase
+          .from('items')
+          .select('id, name, board_id, created_at, boards(name)')
+          .eq('org_id', orgId)
+          .eq('is_archived', false)
+          .or(orExpr)
+        if (!orError) {
+          linked = data || []
+        } else {
+          // fallback: התנהגות קודמת (שאילתה לכל עמודה) אם ה-or נכשל
+          const results = await Promise.all(
+            clientCols.map((col) =>
+              supabase
+                .from('items')
+                .select('id, name, board_id, created_at, boards(name)')
+                .eq('org_id', orgId)
+                .eq('is_archived', false)
+                .contains('values', { [col.id]: clientId })
+            )
+          )
+          linked = results.flatMap((r) => r.data || [])
+        }
+      }
       const merged = new Map()
-      results.forEach((r) => (r.data || []).forEach((it) => merged.set(it.id, it)))
+      linked.forEach((it) => merged.set(it.id, it))
       setLinkedItems([...merged.values()].sort((a, b) => (a.created_at < b.created_at ? 1 : -1)))
     } catch {
       setError('טעינת הלקוח נכשלה.')
@@ -130,6 +143,19 @@ export default function ClientPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientId, orgId])
 
+  // סופר-אדמין שקוף לארגון — לא מופיע כבחירה ב"אחראי לקוח"
+  const members = useMemo(
+    () =>
+      orgMembers
+        .filter((m) => !m.profiles?.is_super_admin)
+        .map((m) => ({
+          user_id: m.user_id,
+          full_name: m.profiles?.full_name,
+          email: m.profiles?.email,
+        })),
+    [orgMembers]
+  )
+
   // עדכון שדה בלקוח (בסיס או סטטוס/אחראי)
   async function patchClient(patch) {
     setClient((c) => ({ ...c, ...patch }))
@@ -137,7 +163,10 @@ export default function ClientPage() {
       .from('clients')
       .update({ ...patch, updated_at: new Date().toISOString() })
       .eq('id', clientId)
-    if (error) setError('שמירת השינוי נכשלה.')
+    if (error) {
+      setError('שמירת השינוי נכשלה.')
+      toast('שמירת השינוי נכשלה', 'error')
+    }
   }
 
   // עדכון ערך של שדה מותאם
@@ -182,6 +211,7 @@ export default function ClientPage() {
         if (error) throw error
       }
       setContactModalOpen(false)
+      toast(editingContact ? 'איש הקשר עודכן בהצלחה' : 'איש הקשר נוסף בהצלחה')
       await load()
     } catch {
       setError('שמירת איש הקשר נכשלה.')
@@ -191,14 +221,38 @@ export default function ClientPage() {
   }
 
   async function archiveContact(ct) {
-    if (!window.confirm(`להשבית את איש הקשר "${ct.name}"?`)) return
-    await supabase.from('contacts').update({ is_archived: true }).eq('id', ct.id)
+    const ok = await confirm({
+      title: 'השבתת איש קשר',
+      message: `להשבית את איש הקשר "${ct.name}"?`,
+      confirmText: 'השבתה',
+      danger: true,
+    })
+    if (!ok) return
+    const { error } = await supabase.from('contacts').update({ is_archived: true }).eq('id', ct.id)
+    if (error) {
+      toast('השבתת איש הקשר נכשלה', 'error')
+      return
+    }
+    toast('איש הקשר הושבת בהצלחה')
     await load()
   }
 
   async function archiveClient() {
-    if (!window.confirm(`להשבית את הלקוח "${client.name}"? הנתונים יישמרו וניתן לשחזר.`)) return
-    await supabase.from('clients').update({ is_archived: true }).eq('id', clientId)
+    const ok = await confirm({
+      title: 'השבתת לקוח',
+      message: `להשבית את הלקוח "${client.name}"? הנתונים יישמרו וניתן לשחזר.`,
+      confirmText: 'השבתה',
+      danger: true,
+    })
+    if (!ok) return
+    setArchivingClient(true)
+    const { error } = await supabase.from('clients').update({ is_archived: true }).eq('id', clientId)
+    if (error) {
+      toast('השבתת הלקוח נכשלה', 'error')
+      setArchivingClient(false)
+      return
+    }
+    toast('הלקוח הושבת בהצלחה')
     navigate(`/org/${orgId}/clients`)
   }
 
@@ -231,7 +285,7 @@ export default function ClientPage() {
           <p className="mt-1 text-xs text-text-dim">נוצר: {formatDateTime(client.created_at)}</p>
         </div>
         {isAdmin && (
-          <Button variant="ghost" onClick={archiveClient} data-testid="client-archive-btn">
+          <Button variant="ghost" onClick={archiveClient} loading={archivingClient} data-testid="client-archive-btn">
             <span className="text-status-orange">השבת לקוח</span>
           </Button>
         )}
@@ -570,8 +624,13 @@ export default function ClientPage() {
             />
           </div>
           <div className="flex justify-start gap-2">
-            <Button type="submit" disabled={savingContact || !contactDraft.name.trim()} data-testid="contact-save-btn">
-              {savingContact ? 'שומר...' : 'שמירה'}
+            <Button
+              type="submit"
+              disabled={!contactDraft.name.trim()}
+              loading={savingContact}
+              data-testid="contact-save-btn"
+            >
+              שמירה
             </Button>
             <Button type="button" variant="ghost" onClick={() => setContactModalOpen(false)}>
               ביטול
