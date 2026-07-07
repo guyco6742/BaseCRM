@@ -27,14 +27,13 @@ import {
 import { exportRowsToCSV, downloadCSV } from '../lib/csv'
 
 export default function ClientsPage() {
-  const { orgId, isAdmin } = useOrg()
+  const { orgId, isAdmin, members: orgMembers } = useOrg()
   const confirm = useConfirm()
   const { toast } = useToast()
   useTitle('לקוחות')
   const [clients, setClients] = useState([])
   const [statuses, setStatuses] = useState([])
   const [fields, setFields] = useState([])
-  const [members, setMembers] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
@@ -68,7 +67,7 @@ export default function ClientsPage() {
   async function load() {
     setLoading(true)
     try {
-      const [cRes, sRes, fRes, mRes] = await Promise.all([
+      const [cRes, sRes, fRes] = await Promise.all([
         supabase
           .from('clients')
           .select('*, contacts(count)')
@@ -77,25 +76,11 @@ export default function ClientsPage() {
           .order('position'),
         supabase.from('client_statuses').select('*').eq('org_id', orgId).order('position'),
         supabase.from('client_fields').select('*').eq('org_id', orgId).order('position'),
-        supabase
-          .from('memberships')
-          .select('user_id, profiles(full_name, email, is_super_admin)')
-          .eq('org_id', orgId),
       ])
       if (cRes.error) throw cRes.error
       setClients(cRes.data || [])
       setStatuses((sRes.data || []).filter((s) => !s.is_archived))
       setFields(fRes.data || [])
-      // סופר-אדמין שקוף לארגון — לא רלוונטי כאחראי
-      setMembers(
-        (mRes.data || [])
-          .filter((m) => !m.profiles?.is_super_admin)
-          .map((m) => ({
-            user_id: m.user_id,
-            full_name: m.profiles?.full_name,
-            email: m.profiles?.email,
-          }))
-      )
     } catch {
       setError('טעינת הלקוחות נכשלה.')
     } finally {
@@ -107,6 +92,19 @@ export default function ClientsPage() {
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orgId])
+
+  // סופר-אדמין שקוף לארגון — לא רלוונטי כאחראי
+  const members = useMemo(
+    () =>
+      orgMembers
+        .filter((m) => !m.profiles?.is_super_admin)
+        .map((m) => ({
+          user_id: m.user_id,
+          full_name: m.profiles?.full_name,
+          email: m.profiles?.email,
+        })),
+    [orgMembers]
+  )
 
   const activeClients = clients.filter((c) => !c.is_archived)
   const archivedClients = clients.filter((c) => c.is_archived)

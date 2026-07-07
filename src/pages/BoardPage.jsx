@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useOrg } from '../context/OrgContext'
@@ -22,7 +22,7 @@ import { exportRowsToCSV, downloadCSV } from '../lib/csv'
 
 export default function BoardPage() {
   const { boardId } = useParams()
-  const { orgId, isAdmin, role } = useOrg()
+  const { orgId, isAdmin, role, members: orgMembers } = useOrg()
   const canEdit = role === 'admin' || role === 'member' || isAdmin
   const confirm = useConfirm()
   const { toast } = useToast()
@@ -31,7 +31,6 @@ export default function BoardPage() {
   const [columns, setColumns] = useState([])
   const [groups, setGroups] = useState([])
   const [items, setItems] = useState([])
-  const [members, setMembers] = useState([])
   const [clients, setClients] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -65,13 +64,12 @@ export default function BoardPage() {
   async function load() {
     setLoading(true)
     try {
-      const [bRes, cRes, gRes, iRes, mRes, clRes] = await Promise.all([
+      const [bRes, cRes, gRes, iRes, clRes] = await Promise.all([
         supabase.from('boards').select('*').eq('id', boardId).maybeSingle(),
         // עמודות: טוענים הכל (כולל מושבתות) לניהול; הסינון לתצוגה נעשה בצד הלקוח
         supabase.from('columns').select('*').eq('board_id', boardId).order('position'),
         supabase.from('groups').select('*').eq('board_id', boardId).eq('is_archived', false).order('position'),
         supabase.from('items').select('*').eq('board_id', boardId).eq('is_archived', false).order('position'),
-        supabase.from('memberships').select('user_id, profiles(full_name, email, is_super_admin)').eq('org_id', orgId),
         // לקוחות הארגון — לעמודות מסוג "לקוח"
         supabase.from('clients').select('id, name').eq('org_id', orgId).eq('is_archived', false).order('name'),
       ])
@@ -81,16 +79,6 @@ export default function BoardPage() {
       setGroups(gRes.data || [])
       setItems(iRes.data || [])
       setClients(clRes.data || [])
-      // סופר-אדמין שקוף לארגון — לא מופיע כבחירה בעמודות "אחראי"
-      setMembers(
-        (mRes.data || [])
-          .filter((m) => !m.profiles?.is_super_admin)
-          .map((m) => ({
-            user_id: m.user_id,
-            full_name: m.profiles?.full_name,
-            email: m.profiles?.email,
-          }))
-      )
     } catch {
       setError('טעינת הבורד נכשלה.')
     } finally {
@@ -102,6 +90,19 @@ export default function BoardPage() {
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [boardId, orgId])
+
+  // סופר-אדמין שקוף לארגון — לא מופיע כבחירה בעמודות "אחראי"
+  const members = useMemo(
+    () =>
+      orgMembers
+        .filter((m) => !m.profiles?.is_super_admin)
+        .map((m) => ({
+          user_id: m.user_id,
+          full_name: m.profiles?.full_name,
+          email: m.profiles?.email,
+        })),
+    [orgMembers]
+  )
 
   // ---- פעולות פריטים ----
   async function addItem(group, name, values = {}) {

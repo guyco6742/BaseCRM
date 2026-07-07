@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useOrg } from '../context/OrgContext'
@@ -58,7 +58,7 @@ function EditableField({ label, value, onSave, type = 'text', textarea = false, 
 
 export default function ClientPage() {
   const { clientId } = useParams()
-  const { orgId, isAdmin } = useOrg()
+  const { orgId, isAdmin, members: orgMembers } = useOrg()
   const navigate = useNavigate()
   const confirm = useConfirm()
   const { toast } = useToast()
@@ -67,7 +67,6 @@ export default function ClientPage() {
   const [statuses, setStatuses] = useState([])
   const [fields, setFields] = useState([])
   const [contacts, setContacts] = useState([])
-  const [members, setMembers] = useState([])
   const [linkedItems, setLinkedItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -83,28 +82,17 @@ export default function ClientPage() {
   async function load() {
     setLoading(true)
     try {
-      const [cRes, sRes, fRes, ctRes, mRes] = await Promise.all([
+      const [cRes, sRes, fRes, ctRes] = await Promise.all([
         supabase.from('clients').select('*').eq('id', clientId).maybeSingle(),
         supabase.from('client_statuses').select('*').eq('org_id', orgId).eq('is_archived', false).order('position'),
         supabase.from('client_fields').select('*').eq('org_id', orgId).eq('is_archived', false).order('position'),
         supabase.from('contacts').select('*').eq('client_id', clientId).eq('is_archived', false).order('position'),
-        supabase.from('memberships').select('user_id, profiles(full_name, email, is_super_admin)').eq('org_id', orgId),
       ])
       if (cRes.error || !cRes.data) throw cRes.error || new Error('not found')
       setClient(cRes.data)
       setStatuses(sRes.data || [])
       setFields(fRes.data || [])
       setContacts(ctRes.data || [])
-      // סופר-אדמין שקוף לארגון — לא מופיע כבחירה ב"אחראי לקוח"
-      setMembers(
-        (mRes.data || [])
-          .filter((m) => !m.profiles?.is_super_admin)
-          .map((m) => ({
-            user_id: m.user_id,
-            full_name: m.profiles?.full_name,
-            email: m.profiles?.email,
-          }))
-      )
 
       // משימות מקושרות — פריטים שבעמודת "לקוח" שלהם מופיע הלקוח הזה
       const { data: clientCols } = await supabase
@@ -154,6 +142,19 @@ export default function ClientPage() {
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientId, orgId])
+
+  // סופר-אדמין שקוף לארגון — לא מופיע כבחירה ב"אחראי לקוח"
+  const members = useMemo(
+    () =>
+      orgMembers
+        .filter((m) => !m.profiles?.is_super_admin)
+        .map((m) => ({
+          user_id: m.user_id,
+          full_name: m.profiles?.full_name,
+          email: m.profiles?.email,
+        })),
+    [orgMembers]
+  )
 
   // עדכון שדה בלקוח (בסיס או סטטוס/אחראי)
   async function patchClient(patch) {
