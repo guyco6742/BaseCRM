@@ -594,8 +594,29 @@ export default function ClientsPage() {
       )}
 
       {/* לקוח חדש */}
-      <Modal open={addOpen} onClose={() => setAddOpen(false)} title="לקוח חדש" testid="add-client-modal">
-        <form onSubmit={handleCreate} onKeyDown={handleEnterAsTab} className="space-y-4">
+      <Modal
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        title="לקוח חדש"
+        testid="add-client-modal"
+        footer={
+          <>
+            <Button
+              type="submit"
+              form="add-client-form"
+              disabled={!newClient.name.trim()}
+              loading={saving}
+              data-testid="client-create-submit"
+            >
+              צור לקוח
+            </Button>
+            <Button type="button" variant="ghost" onClick={() => setAddOpen(false)}>
+              ביטול
+            </Button>
+          </>
+        }
+      >
+        <form id="add-client-form" onSubmit={handleCreate} onKeyDown={handleEnterAsTab} className="space-y-4">
           <Input
             label="שם הלקוח"
             value={newClient.name}
@@ -663,19 +684,6 @@ export default function ClientsPage() {
               </label>
             ))}
 
-          <div className="flex justify-start gap-2">
-            <Button
-              type="submit"
-              disabled={!newClient.name.trim()}
-              loading={saving}
-              data-testid="client-create-submit"
-            >
-              צור לקוח
-            </Button>
-            <Button type="button" variant="ghost" onClick={() => setAddOpen(false)}>
-              ביטול
-            </Button>
-          </div>
         </form>
       </Modal>
 
