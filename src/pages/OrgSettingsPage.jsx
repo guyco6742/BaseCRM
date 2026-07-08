@@ -13,6 +13,7 @@ import InviteMemberModal from '../components/InviteMemberModal'
 import OrgLogoUpload from '../components/OrgLogoUpload'
 import ClientStatusManager from '../components/ClientStatusManager'
 import LeadSourcesManager from '../components/crm/LeadSourcesManager'
+import PaymentProviderManager from '../components/crm/PaymentProviderManager'
 
 export default function OrgSettingsPage() {
   const { orgId, org, isAdmin, loading: orgLoading, refreshOrg, refreshMembers } = useOrg()
@@ -144,6 +145,10 @@ export default function OrgSettingsPage() {
           <ClientStatusManager orgId={orgId} />
 
           <LeadSourcesManager orgId={orgId} />
+
+          <div className="mb-8">
+            <PaymentProviderManager orgId={orgId} />
+          </div>
 
           <section className="mb-8">
             <h2 className="mb-3 text-lg font-semibold text-text">

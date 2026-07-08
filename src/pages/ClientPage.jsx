@@ -11,6 +11,7 @@ import Modal from '../components/ui/Modal'
 import Input from '../components/ui/Input'
 import Avatar from '../components/ui/Avatar'
 import BoardCell from '../components/board/BoardCell'
+import PaymentsSection from '../components/crm/PaymentsSection'
 import { formatDateTime } from '../lib/columnTypes'
 import { handleEnterAsTab } from '../lib/formNav'
 
@@ -553,6 +554,8 @@ export default function ClientPage() {
               </div>
             )}
           </section>
+
+          <PaymentsSection orgId={orgId} clientId={clientId} clientPhone={client.phone} clientName={client.name} />
 
           {/* משימות מקושרות */}
           <section className="rounded-lg border border-border bg-surface p-4" data-testid="client-linked-tasks">
