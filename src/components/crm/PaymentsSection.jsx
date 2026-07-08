@@ -118,10 +118,12 @@ export default function PaymentsSection({ orgId, clientId, clientPhone }) {
                   העתק לינק
                 </button>
               )}
-              <button type="button" onClick={() => archivePayment(p)}
-                className="text-xs text-text-dim hover:text-status-red" data-testid={`payment-archive-${p.id}`}>
-                ארכב
-              </button>
+              {!(p.status === 'pending' && p.provider_ref) && (
+                <button type="button" onClick={() => archivePayment(p)}
+                  className="text-xs text-text-dim hover:text-status-red" data-testid={`payment-archive-${p.id}`}>
+                  ארכב
+                </button>
+              )}
             </li>
           ))}
         </ul>

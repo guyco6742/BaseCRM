@@ -23,6 +23,7 @@ Deno.serve(async (req) => {
         invoice_url: result.invoiceUrl ?? null,
         invoice_number: result.invoiceNumber ?? null,
         raw_webhook: result.raw,
+        is_archived: false,
       }).eq('id', payment.id)
     }
     return json({ ok: true })
