@@ -154,20 +154,6 @@ export default function Sidebar() {
           💳 תשלומים
         </NavLink>
 
-        {/* עמוד אופציונלי — מוצג רק אם הופעל לארגון הזה ע"י סופר-אדמין */}
-        {org?.features?.send_contract && (
-          <NavLink
-            to={`/org/${orgId}/send-contract`}
-            data-testid="sidebar-send-contract-link"
-            className={({ isActive }) =>
-              `mb-2 flex items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium ${
-                isActive ? 'bg-accent/20 text-accent' : 'text-text-muted hover:bg-surface-2'
-              }`
-            }
-          >
-            ✍️ שליחת חוזה
-          </NavLink>
-        )}
         <div className="mb-2 border-b border-border" />
 
         {loading ? (
