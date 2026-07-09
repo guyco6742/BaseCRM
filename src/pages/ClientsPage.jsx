@@ -25,6 +25,7 @@ import {
   getCellText,
 } from '../lib/clientTable'
 import { exportRowsToCSV, downloadCSV } from '../lib/csv'
+import { readOrgPref, writeOrgPref } from '../lib/orgStorage'
 import FavoriteStarButton from '../components/FavoriteStarButton'
 
 export default function ClientsPage() {
@@ -38,14 +39,18 @@ export default function ClientsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
-  // תצוגה: רשימה / קנבן — נשמרת בין ביקורים
-  const [view, setView] = useState(() => localStorage.getItem('basecrm.clientsView') || 'list')
+  // תצוגה: רשימה / קנבן — נשמרת בין ביקורים, מבודדת פר-ארגון (F15)
+  // הערה: orgId מגיע מ-useParams() דרך useOrg() (למעלה) ותמיד קיים בשלב זה,
+  // כי ClientsPage מרונדר תחת /org/:orgId/clients — לכן בטוח לקרוא אותו כבר
+  // באתחול ה-state (אין race על הרינדור הראשון).
+  const [view, setView] = useState(() => readOrgPref(orgId, 'clientsView', 'basecrm.clientsView') || 'list')
   // סינון לפי שלב בפייפליין (null = הכל)
   const [statusFilter, setStatusFilter] = useState(null)
-  // מיון: { key, dir } — נשמר בין ביקורים
+  // מיון: { key, dir } — נשמר בין ביקורים, מבודד פר-ארגון (F15)
   const [sort, setSort] = useState(() => {
     try {
-      return JSON.parse(localStorage.getItem('basecrm.clientsSort')) || { key: 'name', dir: 'asc' }
+      const raw = readOrgPref(orgId, 'clientsSort', 'basecrm.clientsSort')
+      return (raw && JSON.parse(raw)) || { key: 'name', dir: 'asc' }
     } catch {
       return { key: 'name', dir: 'asc' }
     }
@@ -92,6 +97,21 @@ export default function ClientsPage() {
   useEffect(() => {
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orgId])
+
+  // ClientsPage לא נטען מחדש כשעוברים מארגון לארגון באותו נתיב (/org/:orgId/clients) —
+  // רק ה-orgId ב-context משתנה. לכן צריך לסנכרן מחדש את העדפות התצוגה/מיון
+  // מה-localStorage המבודד של הארגון החדש, אחרת הן "יידבקו" מהארגון הקודם (F15).
+  useEffect(() => {
+    setView(readOrgPref(orgId, 'clientsView', 'basecrm.clientsView') || 'list')
+    setSort(() => {
+      try {
+        const raw = readOrgPref(orgId, 'clientsSort', 'basecrm.clientsSort')
+        return (raw && JSON.parse(raw)) || { key: 'name', dir: 'asc' }
+      } catch {
+        return { key: 'name', dir: 'asc' }
+      }
+    })
   }, [orgId])
 
   // סופר-אדמין שקוף לארגון — לא רלוונטי כאחראי
@@ -143,14 +163,14 @@ export default function ClientsPage() {
   function applySort(key) {
     setSort((prev) => {
       const next = prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' }
-      localStorage.setItem('basecrm.clientsSort', JSON.stringify(next))
+      writeOrgPref(orgId, 'clientsSort', JSON.stringify(next))
       return next
     })
   }
   function toggleSortDir() {
     setSort((prev) => {
       const next = { key: prev.key, dir: prev.dir === 'asc' ? 'desc' : 'asc' }
-      localStorage.setItem('basecrm.clientsSort', JSON.stringify(next))
+      writeOrgPref(orgId, 'clientsSort', JSON.stringify(next))
       return next
     })
   }
@@ -168,7 +188,7 @@ export default function ClientsPage() {
 
   function switchView(v) {
     setView(v)
-    localStorage.setItem('basecrm.clientsView', v)
+    writeOrgPref(orgId, 'clientsView', v)
   }
 
   // שינוי שלב מגרירה בקנבן — עדכון אופטימי
