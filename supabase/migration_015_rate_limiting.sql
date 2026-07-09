@@ -189,6 +189,15 @@ grant execute on function public.get_invitation_by_token(text) to anon, authenti
 -- ----------------------------------------------------------------------------
 update public.organizations set features = features - 'send_contract';
 
+-- ----------------------------------------------------------------------------
+-- 6. אכיפת גודל קובץ בצד השרת (F2) — הוולידציה בצד לקוח (10MB) ניתנת לעקיפה
+--    בקריאה ישירה ל-Storage API; מגבלת ה-bucket היא שכבת האכיפה האמיתית.
+--    upsert: מבטיח שה-bucket קיים עם המגבלה גם בסביבה שבה מיגרציה 002 לא רצה.
+-- ----------------------------------------------------------------------------
+insert into storage.buckets (id, name, public, file_size_limit)
+values ('attachments', 'attachments', false, 10485760) -- 10MB
+on conflict (id) do update set file_size_limit = excluded.file_size_limit;
+
 -- ============================================================================
 -- SQL Smoke Test (dev בלבד) — לא רץ כחלק מהמיגרציה. הסירו את ה-comment והריצו
 -- ידנית ב-SQL editor של dev כדי לוודא שהגבלת הקצב עובדת:
