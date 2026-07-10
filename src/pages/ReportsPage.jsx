@@ -153,10 +153,8 @@ export default function ReportsPage() {
   useTitle('דוחות')
   const [searchParams, setSearchParams] = useSearchParams()
 
-  const [report, setReport] = useState(() => {
-    const fromUrl = searchParams.get('report')
-    return REPORT_VALUES.includes(fromUrl) ? fromUrl : DEFAULT_REPORT
-  })
+  const reportFromUrl = searchParams.get('report')
+  const report = REPORT_VALUES.includes(reportFromUrl) ? reportFromUrl : DEFAULT_REPORT
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
   const [rows, setRows] = useState([])
@@ -170,7 +168,6 @@ export default function ReportsPage() {
   const refetch = useCallback(() => setReloadCount((n) => n + 1), [])
 
   function handleReportChange(value) {
-    setReport(value)
     setSearchParams({ report: value })
   }
 
