@@ -19,6 +19,7 @@ const BoardPage = lazy(() => import('./pages/BoardPage'))
 const ClientsPage = lazy(() => import('./pages/ClientsPage'))
 const ClientPage = lazy(() => import('./pages/ClientPage'))
 const PaymentsPage = lazy(() => import('./pages/PaymentsPage'))
+const OrgDashboardPage = lazy(() => import('./pages/OrgDashboardPage'))
 const OrgSettingsPage = lazy(() => import('./pages/OrgSettingsPage'))
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'))
 
@@ -48,6 +49,7 @@ export default function App() {
         {/* מרחב הארגון — עם סרגל צד וקונטקסט ארגון */}
         <Route path="/org/:orgId" element={<OrgLayout />}>
           <Route index element={<OrgHomePage />} />
+          <Route path="dashboard" element={<OrgDashboardPage />} />
           <Route path="workspace/:wsId" element={<BoardsPage />} />
           <Route path="board/:boardId" element={<BoardPage />} />
           <Route path="clients" element={<ClientsPage />} />

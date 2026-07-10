@@ -128,6 +128,32 @@ export default function Sidebar() {
       </div>
 
       <nav className="flex-1 overflow-auto p-2">
+        {/* דשבורד */}
+        <NavLink
+          to={`/org/${orgId}/dashboard`}
+          data-testid="sidebar-dashboard-link"
+          className={({ isActive }) =>
+            `mb-2 flex items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium ${
+              isActive ? 'bg-accent/20 text-accent' : 'text-text-muted hover:bg-surface-2'
+            }`
+          }
+        >
+          📊 דשבורד
+        </NavLink>
+
+        {/* דוחות */}
+        <NavLink
+          to={`/org/${orgId}/reports`}
+          data-testid="sidebar-reports-link"
+          className={({ isActive }) =>
+            `mb-2 flex items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium ${
+              isActive ? 'bg-accent/20 text-accent' : 'text-text-muted hover:bg-surface-2'
+            }`
+          }
+        >
+          📈 דוחות
+        </NavLink>
+
         {/* CRM — לקוחות */}
         <NavLink
           to={`/org/${orgId}/clients`}
