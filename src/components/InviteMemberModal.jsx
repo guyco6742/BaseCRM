@@ -1,14 +1,27 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { useAuth } from '../context/AuthContext'
+import { useToast } from '../context/ToastContext'
 import Modal from './ui/Modal'
 import Button from './ui/Button'
 import Input from './ui/Input'
 import { handleEnterAsTab } from '../lib/formNav'
 
-// מודל להזמנת משתמש לארגון. יוצר שורת invitation ומחזיר קישור הצטרפות.
+// מנסה לחלץ את גוף השגיאה שהוחזר מפונקציית ה-edge (FunctionsHttpError.context
+// הוא Response גולמי) — כדי להבחין בין already_invited לשגיאה כללית.
+async function parseInvokeError(err) {
+  try {
+    const ctx = err?.context
+    if (ctx && typeof ctx.json === 'function') return await ctx.json()
+  } catch {
+    // גוף לא ניתן לפענוח — נופלים למסר גנרי
+  }
+  return null
+}
+
+// מודל להזמנת משתמש לארגון. שולח בקשה ל-send-invite (edge function) שיוצרת
+// את שורת ה-invitation בצד שרת ומנסה לשלוח מייל הזמנה דרך Resend.
 export default function InviteMemberModal({ open, onClose, orgId, defaultRole = 'member', onInvited }) {
-  const { user } = useAuth()
+  const { toast } = useToast()
   const [email, setEmail] = useState('')
   const [role, setRole] = useState(defaultRole)
   const [loading, setLoading] = useState(false)
@@ -29,22 +42,27 @@ export default function InviteMemberModal({ open, onClose, orgId, defaultRole = 
     setError('')
     setLoading(true)
     try {
-      const { data, error } = await supabase
-        .from('invitations')
-        .insert({
-          org_id: orgId,
-          email: email.trim().toLowerCase(),
-          role,
-          invited_by: user.id,
-        })
-        .select('token')
-        .single()
-      if (error) throw error
-      const link = `${window.location.origin}/accept-invite?token=${data.token}`
-      setInviteLink(link)
+      const { data, error: invokeError } = await supabase.functions.invoke('send-invite', {
+        body: { action: 'create', orgId, email: email.trim().toLowerCase(), role },
+      })
+      if (invokeError) {
+        const body = await parseInvokeError(invokeError)
+        setError(
+          body?.error === 'already_invited'
+            ? 'כבר קיימת הזמנה ממתינה לכתובת הזו'
+            : 'יצירת ההזמנה נכשלה. נסו שוב.'
+        )
+        return
+      }
+      setInviteLink(data.inviteUrl)
+      if (data.emailSent) {
+        toast('ההזמנה נשלחה במייל')
+      } else {
+        toast('המייל לא נשלח — העתיקו את הקישור ידנית', 'error')
+      }
       onInvited?.()
     } catch {
-      setError('יצירת ההזמנה נכשלה. ייתכן שהמשתמש כבר הוזמן.')
+      setError('יצירת ההזמנה נכשלה. נסו שוב.')
     } finally {
       setLoading(false)
     }

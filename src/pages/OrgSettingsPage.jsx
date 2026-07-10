@@ -15,6 +15,18 @@ import ClientStatusManager from '../components/ClientStatusManager'
 import LeadSourcesManager from '../components/crm/LeadSourcesManager'
 import PaymentProviderManager from '../components/crm/PaymentProviderManager'
 
+// מנסה לחלץ את גוף השגיאה שהוחזר מפונקציית ה-edge (FunctionsHttpError.context
+// הוא Response גולמי) — כדי להבחין בין too_soon לשגיאה כללית.
+async function parseInvokeError(err) {
+  try {
+    const ctx = err?.context
+    if (ctx && typeof ctx.json === 'function') return await ctx.json()
+  } catch {
+    // גוף לא ניתן לפענוח — נופלים למסר גנרי
+  }
+  return null
+}
+
 export default function OrgSettingsPage() {
   const { orgId, org, isAdmin, loading: orgLoading, refreshOrg, refreshMembers } = useOrg()
   const { user, isSuperAdmin } = useAuth()
@@ -26,6 +38,7 @@ export default function OrgSettingsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [inviteOpen, setInviteOpen] = useState(false)
+  const [resendingId, setResendingId] = useState(null)
 
   async function load() {
     setLoading(true)
@@ -102,6 +115,25 @@ export default function OrgSettingsPage() {
       const msg = messages[e.message] || 'מחיקת המשתמש נכשלה.'
       setError(msg)
       toast(msg, 'error')
+    }
+  }
+
+  async function resendInvite(inv) {
+    setResendingId(inv.id)
+    try {
+      const { data, error: invokeError } = await supabase.functions.invoke('send-invite', {
+        body: { action: 'resend', orgId, invitationId: inv.id },
+      })
+      if (invokeError) {
+        const body = await parseInvokeError(invokeError)
+        toast(body?.error === 'too_soon' ? 'נשלח לאחרונה — המתינו דקה' : 'שליחת ההזמנה מחדש נכשלה', 'error')
+        return
+      }
+      toast(data.emailSent ? 'ההזמנה נשלחה שוב במייל' : 'המייל לא נשלח — העתיקו את הקישור ידנית', data.emailSent ? 'success' : 'error')
+    } catch {
+      toast('שליחת ההזמנה מחדש נכשלה', 'error')
+    } finally {
+      setResendingId(null)
     }
   }
 
@@ -233,6 +265,16 @@ export default function OrgSettingsPage() {
                       >
                         העתק קישור
                       </button>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => resendInvite(inv)}
+                        loading={resendingId === inv.id}
+                        disabled={resendingId === inv.id}
+                        data-testid={`invite-resend-${inv.id}`}
+                      >
+                        שלח שוב
+                      </Button>
                       <button
                         onClick={() => cancelInvite(inv)}
                         className="text-sm text-text-dim hover:text-status-red"

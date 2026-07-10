@@ -1,0 +1,169 @@
+import { serviceClient, requireOrgAdmin, json, corsPreflight } from '../_shared/db.ts'
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const VALID_ROLES = ['admin', 'member']
+const RESEND_COOLDOWN_MS = 60 * 1000
+
+function buildInviteUrl(token: string): string {
+  const appUrl = Deno.env.get('APP_URL') ?? 'https://basecrm-app.netlify.app'
+  return `${appUrl}/accept-invite?token=${token}`
+}
+
+// שולח מייל הזמנה דרך Resend. מחזיר true/false בלבד — כשלון בשליחה אף פעם לא
+// מבטל את שורת ה-invitation (ראו §7 Item 4 בספק).
+async function sendInviteEmail({
+  to,
+  orgName,
+  inviterName,
+  inviteUrl,
+}: {
+  to: string
+  orgName: string
+  inviterName: string
+  inviteUrl: string
+}): Promise<boolean> {
+  const apiKey = Deno.env.get('RESEND_API_KEY')
+  if (!apiKey) return false // ללא מפתח — no-op חינני, לא כשל
+
+  const from = Deno.env.get('RESEND_FROM') ?? 'BaseCRM <onboarding@resend.dev>'
+  const subject = `הוזמנת להצטרף ל-${orgName} ב-BaseCRM`
+  const html = `
+    <div dir="rtl" lang="he" style="font-family: Arial, Helvetica, sans-serif; background:#f5f5f5; padding:24px;">
+      <div style="max-width:480px; margin:0 auto; background:#ffffff; border-radius:8px; padding:32px; color:#1f2937;">
+        <h1 style="font-size:18px; margin:0 0 16px;">הוזמנת להצטרף ל-${orgName}</h1>
+        <p style="font-size:14px; line-height:1.6; margin:0 0 24px;">
+          ${inviterName} הזמין/ה אותך להצטרף לארגון <strong>${orgName}</strong> במערכת BaseCRM.
+        </p>
+        <div style="text-align:center; margin:0 0 24px;">
+          <a href="${inviteUrl}"
+             style="display:inline-block; background:#4f46e5; color:#ffffff; text-decoration:none;
+                    padding:12px 28px; border-radius:6px; font-size:14px; font-weight:bold;">
+            הצטרפות לארגון
+          </a>
+        </div>
+        <p style="font-size:12px; line-height:1.6; color:#6b7280; margin:0;">
+          אם הכפתור לא עובד, העתיקו את הקישור הבא לדפדפן:<br />
+          <a href="${inviteUrl}" style="color:#4f46e5; word-break:break-all;">${inviteUrl}</a>
+        </p>
+      </div>
+    </div>
+  `
+
+  try {
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ from, to, subject, html }),
+    })
+    return res.ok
+  } catch (e) {
+    console.error('resend send failed', e)
+    return false
+  }
+}
+
+Deno.serve(async (req) => {
+  const pre = corsPreflight(req); if (pre) return pre
+  try {
+    const body = await req.json()
+    const action = body?.action
+
+    if (action === 'create') {
+      const orgId = body?.orgId
+      const email = String(body?.email ?? '').trim().toLowerCase()
+      const role = body?.role
+
+      if (!orgId || !EMAIL_RE.test(email) || !VALID_ROLES.includes(role)) {
+        return json({ error: 'bad request' }, 400)
+      }
+
+      const auth = await requireOrgAdmin(req, orgId)
+      if (auth instanceof Response) return auth
+
+      const svc = serviceClient()
+      const { data: invitation, error: insErr } = await svc
+        .from('invitations')
+        .insert({ org_id: orgId, email, role, invited_by: auth.userId })
+        .select('id, token')
+        .single()
+
+      if (insErr) {
+        if (insErr.code === '23505') return json({ error: 'already_invited' }, 409)
+        console.error('invite insert failed', insErr)
+        return json({ error: 'internal' }, 500)
+      }
+
+      const [{ data: org }, { data: inviter }] = await Promise.all([
+        svc.from('organizations').select('name').eq('id', orgId).maybeSingle(),
+        svc.from('profiles').select('full_name, email').eq('id', auth.userId).maybeSingle(),
+      ])
+
+      const inviteUrl = buildInviteUrl(invitation.token)
+      const emailSent = await sendInviteEmail({
+        to: email,
+        orgName: org?.name ?? 'הארגון',
+        inviterName: inviter?.full_name || inviter?.email || 'חבר צוות',
+        inviteUrl,
+      })
+
+      if (emailSent) {
+        await svc.from('invitations').update({ last_sent_at: new Date().toISOString() }).eq('id', invitation.id)
+      }
+
+      return json({ ok: true, emailSent, inviteUrl })
+    }
+
+    if (action === 'resend') {
+      const orgId = body?.orgId
+      const invitationId = body?.invitationId
+      if (!orgId || !invitationId) return json({ error: 'bad request' }, 400)
+
+      const auth = await requireOrgAdmin(req, orgId)
+      if (auth instanceof Response) return auth
+
+      const svc = serviceClient()
+      const { data: invitation } = await svc
+        .from('invitations')
+        .select('id, org_id, email, token, status, invited_by, last_sent_at')
+        .eq('id', invitationId)
+        .maybeSingle()
+
+      if (!invitation || invitation.org_id !== orgId || invitation.status !== 'pending') {
+        return json({ error: 'not_found' }, 404)
+      }
+
+      if (invitation.last_sent_at && Date.now() - new Date(invitation.last_sent_at).getTime() < RESEND_COOLDOWN_MS) {
+        return json({ error: 'too_soon' }, 429)
+      }
+
+      const [{ data: org }, { data: inviter }] = await Promise.all([
+        svc.from('organizations').select('name').eq('id', orgId).maybeSingle(),
+        invitation.invited_by
+          ? svc.from('profiles').select('full_name, email').eq('id', invitation.invited_by).maybeSingle()
+          : Promise.resolve({ data: null }),
+      ])
+
+      const inviteUrl = buildInviteUrl(invitation.token)
+      const emailSent = await sendInviteEmail({
+        to: invitation.email,
+        orgName: org?.name ?? 'הארגון',
+        inviterName: inviter?.full_name || inviter?.email || 'חבר צוות',
+        inviteUrl,
+      })
+
+      if (emailSent) {
+        await svc.from('invitations').update({ last_sent_at: new Date().toISOString() }).eq('id', invitation.id)
+      }
+
+      return json({ ok: true, emailSent, inviteUrl })
+    }
+
+    return json({ error: 'bad request' }, 400)
+  } catch (e) {
+    console.error(e)
+    return json({ error: 'internal' }, 500)
+  }
+})
