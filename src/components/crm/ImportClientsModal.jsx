@@ -1,15 +1,20 @@
 import { useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { parseCSV, mapClientRows, buildClientTemplate } from '../../lib/csv'
+import { dedupWithinFile } from '../../lib/importDedup'
 import { useToast } from '../../context/ToastContext'
 import Modal from '../ui/Modal'
 import Button from '../ui/Button'
 
-// ייבוא לקוחות מקובץ CSV: בחירה → תצוגה מקדימה → אישור → ייבוא
+// ייבוא לקוחות מקובץ CSV: בחירה → בדיקת כפילויות → תצוגה מקדימה → אישור → ייבוא.
+// כפילות = שם מנורמל תואם לקוח קיים (לא בארכיון) + (אימייל תואם או טלפון תואם) —
+// ר' src/lib/importDedup.js ו-supabase/migration_018_import_dedup.sql (F7).
 export default function ImportClientsModal({ open, onClose, orgId, statuses, clientFields = [], existingCount, onImported }) {
   const { toast } = useToast()
-  const [stage, setStage] = useState('pick') // pick | preview | importing | done
-  const [records, setRecords] = useState([])
+  const [stage, setStage] = useState('pick') // pick | checking | preview | importing | done
+  const [records, setRecords] = useState([]) // שורות שייובאו בפועל (אחרי כל הדה-דופ)
+  const [skippedList, setSkippedList] = useState([]) // [{name, reason}] לתצוגת ה-details
+  const [dupeError, setDupeError] = useState('') // הודעה כשבדיקת הכפילויות מול השרת נכשלה
   const [warnings, setWarnings] = useState([])
   const [importedCount, setImportedCount] = useState(0)
   const [error, setError] = useState('')
@@ -18,6 +23,8 @@ export default function ImportClientsModal({ open, onClose, orgId, statuses, cli
   function reset() {
     setStage('pick')
     setRecords([])
+    setSkippedList([])
+    setDupeError('')
     setWarnings([])
     setImportedCount(0)
     setError('')
@@ -32,6 +39,7 @@ export default function ImportClientsModal({ open, onClose, orgId, statuses, cli
     const file = e.target.files?.[0]
     if (!file) return
     setError('')
+    setDupeError('')
     try {
       const text = await file.text()
       const rows = parseCSV(text)
@@ -43,9 +51,42 @@ export default function ImportClientsModal({ open, onClose, orgId, statuses, cli
       const warns = []
       if (unknownHeaders.length > 0) warns.push(`עמודות שלא זוהו (ידולגו): ${unknownHeaders.join(', ')}`)
       if (skipped > 0) warns.push(`${skipped} שורות ללא שם ידולגו.`)
-      setRecords(recs)
       setWarnings(warns)
-      setStage('preview')
+
+      // דה-דופ תוך-קובצי (JS טהור, בלי קריאת רשת) — לפני בדיקת השרת
+      const { unique, skipped: fileDupes } = dedupWithinFile(recs)
+
+      setStage('checking')
+      try {
+        const { data, error: rpcError } = await supabase.rpc('find_import_duplicates', {
+          p_org_id: orgId,
+          p_rows: unique.map((r) => ({ i: r.i, name: r.name || '', email: r.email || '', phone: r.phone || '' })),
+        })
+        if (rpcError) throw rpcError
+
+        const matchByIndex = new Map((data || []).map((m) => [m.i, m.matched_on]))
+        const newRows = unique.filter((r) => !matchByIndex.has(r.i))
+        const existingDupeRows = unique.filter((r) => matchByIndex.has(r.i))
+
+        setRecords(newRows)
+        setSkippedList([
+          ...fileDupes.map((r) => ({ name: r.name, reason: 'כפילות בקובץ' })),
+          ...existingDupeRows.map((r) => ({
+            name: r.name,
+            reason: matchByIndex.get(r.i) === 'email' ? 'אימייל' : 'טלפון',
+          })),
+        ])
+        setDupeError('')
+        setStage('preview')
+      } catch {
+        // בדיקת הכפילויות מול השרת נכשלה — לא חוסמים את הייבוא, אבל דורשים
+        // אישור מפורש דרך כפתור ייעודי ("ייבוא ללא בדיקת כפילויות"). הדה-דופ
+        // התוך-קובצי (JS, ללא רשת) עדיין חל.
+        setRecords(unique)
+        setSkippedList(fileDupes.map((r) => ({ name: r.name, reason: 'כפילות בקובץ' })))
+        setDupeError('בדיקת כפילויות מול לקוחות קיימים נכשלה. אפשר לייבא ללא הבדיקה, או לבטל ולנסות שוב.')
+        setStage('preview')
+      }
     } catch {
       setError('קריאת הקובץ נכשלה. ודאו שזה קובץ CSV תקין.')
     } finally {
@@ -53,14 +94,14 @@ export default function ImportClientsModal({ open, onClose, orgId, statuses, cli
     }
   }
 
-  async function handleImport() {
+  async function handleImport(rowsToImport) {
     setStage('importing')
     try {
       // התאמת שם סטטוס מהקובץ לשלב בפייפליין (לא נמצא → השלב הראשון)
       const statusByLabel = new Map(statuses.map((s) => [s.label.trim(), s.id]))
       const defaultStatus = statuses[0]?.id ?? null
 
-      const payload = records.map((r, i) => ({
+      const payload = rowsToImport.map((r, i) => ({
         org_id: orgId,
         name: r.name,
         phone: r.phone ?? null,
@@ -141,16 +182,46 @@ export default function ImportClientsModal({ open, onClose, orgId, statuses, cli
         </div>
       )}
 
+      {stage === 'checking' && (
+        <p className="py-6 text-center text-text-muted">בודק כפילויות מול לקוחות קיימים...</p>
+      )}
+
       {stage === 'preview' && (
-        <div className="space-y-4">
+        <div className="space-y-4" data-testid="import-preview">
           <p className="text-sm text-text">
-            נמצאו <b className="text-status-green">{records.length}</b> לקוחות לייבוא.
+            <b className="text-status-green" data-testid="import-new-count">
+              {records.length}
+            </b>{' '}
+            שורות חדשות ייווספו,{' '}
+            <b className="text-status-orange" data-testid="import-dupe-count">
+              {skippedList.length}
+            </b>{' '}
+            כפילויות ידולגו.
           </p>
+          {dupeError && (
+            <p className="text-sm text-status-red" data-testid="import-dupe-error">
+              ⚠ {dupeError}
+            </p>
+          )}
           {warnings.map((w, i) => (
             <p key={i} className="text-xs text-status-orange">
               ⚠ {w}
             </p>
           ))}
+          {skippedList.length > 0 && (
+            <details className="rounded-md border border-border p-2 text-sm">
+              <summary className="cursor-pointer text-text-muted">
+                הצגת הכפילויות שידולגו ({skippedList.length})
+              </summary>
+              <ul className="mt-2 max-h-40 space-y-1 overflow-auto text-xs text-text-dim">
+                {skippedList.map((s, i) => (
+                  <li key={i}>
+                    {s.name} — {s.reason}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
           <div className="max-h-56 overflow-auto rounded-md border border-border">
             <table className="w-full text-sm">
               <thead>
@@ -182,11 +253,17 @@ export default function ImportClientsModal({ open, onClose, orgId, statuses, cli
           </div>
           {error && <p className="text-sm text-status-red">{error}</p>}
           <div className="flex justify-start gap-2">
-            <Button onClick={handleImport} data-testid="import-confirm">
-              ייבוא {records.length} לקוחות
-            </Button>
-            <Button variant="ghost" onClick={reset}>
-              בחירת קובץ אחר
+            {dupeError ? (
+              <Button onClick={() => handleImport(records)} data-testid="import-confirm">
+                ייבוא ללא בדיקת כפילויות
+              </Button>
+            ) : (
+              <Button onClick={() => handleImport(records)} data-testid="import-confirm">
+                ייבוא {records.length} לקוחות
+              </Button>
+            )}
+            <Button variant="ghost" onClick={reset} data-testid="import-cancel">
+              ביטול
             </Button>
           </div>
         </div>
