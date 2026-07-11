@@ -229,9 +229,14 @@ export default function ClientsPage() {
         // מחרוזת עם ->> בתוכה מגיעה כמו שהיא — לא נמצאה תמיכה מתועדת ב-API
         // ל-JSON path דרך אובייקט/helper נפרד ב-supabase-js v2, זו הצורה
         // המתועדת (foreignTable-free) לפי PostgREST.
-        q = q.order(`custom_values->>${sortCol.field.id}`, { ascending })
+        // nullsFirst:false שומר על ההתנהגות ההיסטורית (sortClients בצד לקוח) של
+        // ערכים ריקים תמיד בסוף, בשני הכיוונים — ברירת המחדל של Postgres ל-DESC
+        // היא NULLS FIRST, מה שהיה מציף טלפונים/אימיילים ריקים לראש עמוד 1.
+        // הערה: זה חל על NULL ב-SQL בלבד, לא על מחרוזת ריקה '' — פער שיורי מול
+        // ההתנהגות הישנה שמקובל להשאיר כך.
+        q = q.order(`custom_values->>${sortCol.field.id}`, { ascending, nullsFirst: false })
       } else {
-        q = q.order(REAL_COLUMN[sortCol.kind], { ascending })
+        q = q.order(REAL_COLUMN[sortCol.kind], { ascending, nullsFirst: false })
       }
     } else {
       // מיון לא-שרתי (status/contacts) — סדר בסיס יציב לעימוד; המיון בפועל
@@ -311,7 +316,7 @@ export default function ClientsPage() {
   // ---- ספירות לצ'יפים של סינון-שלב ----
   // שאילתה קלה אחת (עמודת status_id בלבד, לא כל השורה) — לא כרוכה ב-N+1
   // ולא סוחבת contacts(count)/custom_values הכבדים; מספיק להצגת מונים.
-  const [statusCounts, setStatusCounts] = useState({ total: 0, byStatus: {} })
+  const [statusCounts, setStatusCounts] = useState({ total: 0, byStatus: {}, grandTotal: 0 })
   async function loadStatusCounts() {
     if (!orgId) return
     const { data } = await supabase
@@ -325,7 +330,14 @@ export default function ClientsPage() {
       total++
       if (c.status_id) byStatus[c.status_id] = (byStatus[c.status_id] || 0) + 1
     }
-    setStatusCounts({ total, byStatus })
+    // grandTotal כולל גם לקוחות מושבתים — כדי לתאום עם בסיס המיקום (position)
+    // שמשמש ביצירת לקוח (handleCreate סופר את כל הלקוחות, כולל מושבתים), כך
+    // שהייבוא מה-CSV יוסיף אחרי אותו בסיס בדיוק ולא ידרוס position קיים.
+    const { count: grandTotal } = await supabase
+      .from('clients')
+      .select('id', { count: 'exact', head: true })
+      .eq('org_id', orgId)
+    setStatusCounts({ total, byStatus, grandTotal: grandTotal ?? total })
   }
   useEffect(() => {
     loadStatusCounts()
@@ -1054,7 +1066,7 @@ export default function ClientsPage() {
         orgId={orgId}
         statuses={statuses}
         clientFields={activeFields}
-        existingCount={statusCounts.total}
+        existingCount={statusCounts.grandTotal}
         onImported={() => {
           paged.refetch()
           if (view === 'kanban') setKanbanReload((n) => n + 1)
