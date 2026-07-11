@@ -123,17 +123,22 @@ export default function GroupSection({
   orgId,
   canEdit,
   isAdmin,
+  total,          // סה"כ פריטים לא-מושבתים בקבוצה (עשוי להיות גדול מ-items.length — חלון טעון חלקי)
+  loadingMore,    // האם "טען עוד" הזו בטעינה כרגע
   onAddItem,
   onArchiveGroup,
   onItemName,
   onItemValue,
   onArchiveItem,
   onArchiveColumn,
+  onLoadMore,     // (group) => Promise — טוען את 100 הפריטים הבאים לקבוצה זו
 }) {
   const [collapsed, setCollapsed] = useState(false)
   const [newName, setNewName] = useState('')
 
   const gridTemplate = `minmax(220px, 1fr) repeat(${columns.length}, 160px) 40px`
+  const totalCount = typeof total === 'number' ? total : items.length
+  const hasMore = totalCount > items.length
 
   function submitNew(e) {
     e.preventDefault()
@@ -157,7 +162,9 @@ export default function GroupSection({
         <h3 className="font-semibold" style={{ color: group.color }}>
           {group.name}
         </h3>
-        <span className="text-xs text-text-dim">{items.length} פריטים</span>
+        <span className="text-xs text-text-dim">
+          {hasMore ? `${items.length} מתוך ${totalCount} פריטים` : `${items.length} פריטים`}
+        </span>
         {isAdmin && (
           <button
             onClick={() => onArchiveGroup(group)}
@@ -234,8 +241,72 @@ export default function GroupSection({
               <div style={{ gridColumn: `span ${columns.length + 1}` }} />
             </form>
           )}
+
+          {/* "טען עוד" — הקבוצה גדולה מ-100 פריטים; החלון הטעון הוא רק חלק (Item 7) */}
+          {hasMore && (
+            <div className="flex justify-center border-t border-border bg-surface/60 py-2">
+              <button
+                onClick={() => onLoadMore?.(group)}
+                disabled={loadingMore}
+                className="text-sm text-accent hover:underline disabled:cursor-not-allowed disabled:opacity-50"
+                data-testid={`board-loadmore-${group.id}`}
+              >
+                {loadingMore ? 'טוען...' : `טען עוד (${totalCount - items.length} נוספים)`}
+              </button>
+            </div>
+          )}
         </div>
       )}
+    </div>
+  )
+}
+
+// שלד טעינה לקבוצה (כותרת + כמה שורות פועמות) — מוצג בזמן שחלון הפריטים
+// הראשוני של הקבוצה נטען (Item 7 rider: F27 skeleton states).
+export function GroupSectionSkeleton({ group, columns }) {
+  const gridTemplate = `minmax(220px, 1fr) repeat(${columns.length}, 160px) 40px`
+  return (
+    <div className="mb-6" data-testid={`group-skeleton-${group.id}`}>
+      <div className="mb-1 flex items-center gap-2">
+        <span className="text-text-dim" style={{ color: group.color }}>▾</span>
+        <h3 className="font-semibold" style={{ color: group.color }}>
+          {group.name}
+        </h3>
+        <div className="h-3 w-16 animate-pulse rounded bg-surface-2" />
+      </div>
+      <div className="overflow-hidden rounded-md border border-border">
+        <div
+          className="grid border-b border-border bg-sidebar text-xs font-medium text-text-muted"
+          style={{ gridTemplateColumns: gridTemplate }}
+        >
+          <div className="border-e border-border px-3 py-2" style={{ boxShadow: `inset 3px 0 0 ${group.color}` }}>
+            פריט
+          </div>
+          {columns.map((col) => (
+            <div key={col.id} className="border-e border-border px-2 py-2">
+              <span className="truncate">{col.name}</span>
+            </div>
+          ))}
+          <div />
+        </div>
+        {[0, 1, 2].map((i) => (
+          <div
+            key={i}
+            className="grid items-stretch border-b border-border bg-surface last:border-b-0"
+            style={{ gridTemplateColumns: gridTemplate }}
+          >
+            <div className="border-e border-border px-3 py-2.5">
+              <div className="h-3.5 w-2/3 animate-pulse rounded bg-surface-2" />
+            </div>
+            {columns.map((col) => (
+              <div key={col.id} className="flex items-center border-e border-border px-3 py-2.5">
+                <div className="h-3.5 w-full animate-pulse rounded bg-surface-2" />
+              </div>
+            ))}
+            <div />
+          </div>
+        ))}
+      </div>
     </div>
   )
 }

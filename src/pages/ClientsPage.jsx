@@ -28,6 +28,7 @@ import {
 } from '../lib/clientTable'
 import { exportRowsToCSV, downloadCSV } from '../lib/csv'
 import { readOrgPref, writeOrgPref } from '../lib/orgStorage'
+import { isValidEmail, isValidIsraeliPhone } from '../lib/validation'
 import FavoriteStarButton from '../components/FavoriteStarButton'
 
 // עמודות "בסיס" הניתנות למיון בצד שרת (עמודת clients אמיתית). status/contacts
@@ -129,6 +130,11 @@ export default function ClientsPage() {
   const [importOpen, setImportOpen] = useState(false)
   const [newClient, setNewClient] = useState({ name: '', phone: '', email: '', status_id: null, custom_values: {} })
   const [saving, setSaving] = useState(false)
+  // אימות טופס (F19): שגיאות פורמט טלפון/אימייל + אזהרת כפילות רכה (לא חוסמת)
+  // מתוצאת find_import_duplicates על שורה בודדת — ר' handleCreate למטה.
+  const [clientErrors, setClientErrors] = useState({ phone: '', email: '' })
+  const [dupeWarning, setDupeWarning] = useState(null) // { matchedOn: 'email' | 'phone' } | null
+  const [checkingDupe, setCheckingDupe] = useState(false)
   const [fieldsManagerOpen, setFieldsManagerOpen] = useState(false)
   const [addFieldOpen, setAddFieldOpen] = useState(false)
   const [editingField, setEditingField] = useState(null)
@@ -488,8 +494,46 @@ export default function ClientsPage() {
   }
 
   // ---- לקוחות ----
+  function closeAddModal() {
+    setAddOpen(false)
+    setClientErrors({ phone: '', email: '' })
+    setDupeWarning(null)
+  }
+
+  // שולח הטופס: קודם אימות פורמט (חוסם), ואז — אם עדיין לא אושרה אזהרת
+  // כפילות — בדיקת כפילות רכה מול לקוחות קיימים (לא חוסמת; RPC נכשל => ממשיכים,
+  // "fail-open", כי זו רק אזהרה). אם נמצאה התאמה, עוצרים ומציגים אזהרה עם
+  // אישור מפורש ("צור בכל זאת") לפני שממשיכים ליצירה בפועל.
   async function handleCreate(e) {
     e.preventDefault()
+    const phoneErr = isValidIsraeliPhone(newClient.phone) ? '' : 'מספר טלפון לא תקין'
+    const emailErr = isValidEmail(newClient.email) ? '' : 'כתובת אימייל לא תקינה'
+    setClientErrors({ phone: phoneErr, email: emailErr })
+    if (phoneErr || emailErr) return
+
+    if (!dupeWarning) {
+      setCheckingDupe(true)
+      try {
+        const { data } = await supabase.rpc('find_import_duplicates', {
+          p_org_id: orgId,
+          p_rows: [{ i: 0, name: newClient.name || '', email: newClient.email || '', phone: newClient.phone || '' }],
+        })
+        const match = (data || [])[0]
+        setCheckingDupe(false)
+        if (match) {
+          setDupeWarning({ matchedOn: match.matched_on })
+          return
+        }
+      } catch {
+        // בדיקת הכפילויות נכשלה — לא חוסמים יצירה על אזהרה רכה שלא הצלחנו לחשב
+        setCheckingDupe(false)
+      }
+    }
+
+    await createClient()
+  }
+
+  async function createClient() {
     setSaving(true)
     try {
       const { count } = await supabase
@@ -506,7 +550,7 @@ export default function ClientsPage() {
         position: count ?? 0,
       })
       if (insError) throw insError
-      setAddOpen(false)
+      closeAddModal()
       setNewClient({ name: '', phone: '', email: '', status_id: null, custom_values: {} })
       // הלקוח החדש עשוי לא להשתייך לעמוד/סינון הנוכחיים — רענון מלא במקום דחיפה מקומית
       paged.refetch()
@@ -941,7 +985,7 @@ export default function ClientsPage() {
       )}
 
       {/* לקוח חדש */}
-      <Modal open={addOpen} onClose={() => setAddOpen(false)} title="לקוח חדש" testid="add-client-modal">
+      <Modal open={addOpen} onClose={closeAddModal} title="לקוח חדש" testid="add-client-modal">
         <form onSubmit={handleCreate} onKeyDown={handleEnterAsTab} className="space-y-4">
           <Input
             label="שם הלקוח"
@@ -952,20 +996,42 @@ export default function ClientsPage() {
             autoFocus
             data-testid="client-name-input"
           />
-          <Input
-            label="טלפון (אופציונלי)"
-            type="tel"
-            value={newClient.phone}
-            onChange={(e) => setNewClient((c) => ({ ...c, phone: e.target.value }))}
-            data-testid="client-phone-input"
-          />
-          <Input
-            label="אימייל (אופציונלי)"
-            type="email"
-            value={newClient.email}
-            onChange={(e) => setNewClient((c) => ({ ...c, email: e.target.value }))}
-            data-testid="client-email-input"
-          />
+          <div>
+            <Input
+              label="טלפון (אופציונלי)"
+              type="tel"
+              value={newClient.phone}
+              onChange={(e) => {
+                setNewClient((c) => ({ ...c, phone: e.target.value }))
+                setClientErrors((err) => ({ ...err, phone: '' }))
+                setDupeWarning(null)
+              }}
+              data-testid="client-phone-input"
+            />
+            {clientErrors.phone && (
+              <p className="mt-1 text-xs text-status-red" data-testid="client-phone-error">
+                {clientErrors.phone}
+              </p>
+            )}
+          </div>
+          <div>
+            <Input
+              label="אימייל (אופציונלי)"
+              type="email"
+              value={newClient.email}
+              onChange={(e) => {
+                setNewClient((c) => ({ ...c, email: e.target.value }))
+                setClientErrors((err) => ({ ...err, email: '' }))
+                setDupeWarning(null)
+              }}
+              data-testid="client-email-input"
+            />
+            {clientErrors.email && (
+              <p className="mt-1 text-xs text-status-red" data-testid="client-email-error">
+                {clientErrors.email}
+              </p>
+            )}
+          </div>
 
           <label className="block">
             <span className="mb-1 block text-sm text-text-muted">שלב</span>
@@ -1010,18 +1076,41 @@ export default function ClientsPage() {
               </label>
             ))}
 
-          <div className="flex justify-start gap-2">
-            <Button
-              type="submit"
-              disabled={!newClient.name.trim()}
-              loading={saving}
-              data-testid="client-create-submit"
+          {/* אזהרת כפילות רכה (F19) — לא חוסמת; מציגה אישור נפרד לפני יצירה בפועל */}
+          {dupeWarning && (
+            <p
+              className="rounded-md border border-status-orange/40 bg-status-orange/10 p-3 text-sm text-status-orange"
+              data-testid="client-dupe-warning"
             >
-              צור לקוח
-            </Button>
-            <Button type="button" variant="ghost" onClick={() => setAddOpen(false)}>
-              ביטול
-            </Button>
+              ייתכן שהלקוח כבר קיים במערכת (התאמה לפי אימייל/טלפון)
+            </p>
+          )}
+
+          <div className="flex justify-start gap-2">
+            {dupeWarning ? (
+              <>
+                <Button type="button" loading={saving} onClick={createClient} data-testid="client-create-anyway">
+                  צור בכל זאת
+                </Button>
+                <Button type="button" variant="ghost" onClick={() => setDupeWarning(null)}>
+                  ביטול
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button
+                  type="submit"
+                  disabled={!newClient.name.trim()}
+                  loading={saving || checkingDupe}
+                  data-testid="client-create-submit"
+                >
+                  צור לקוח
+                </Button>
+                <Button type="button" variant="ghost" onClick={closeAddModal}>
+                  ביטול
+                </Button>
+              </>
+            )}
           </div>
         </form>
       </Modal>

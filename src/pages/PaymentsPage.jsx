@@ -1,47 +1,130 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useTitle } from '../lib/useTitle'
-import { PAYMENT_STATUSES, PAYMENT_METHODS, formatAmount, sumByStatus, filterPayments, paymentToCSVRow, PAYMENT_CSV_HEADERS } from '../lib/payments'
+import { PAYMENT_STATUSES, PAYMENT_METHODS, formatAmount, sumByStatus, paymentToCSVRow, PAYMENT_CSV_HEADERS } from '../lib/payments'
 import { exportRowsToCSV, downloadCSV } from '../lib/csv'
 import { PaymentStatusChip } from '../components/crm/PaymentsSection'
 import Button from '../components/ui/Button'
-import LoadingSpinner from '../components/ui/LoadingSpinner'
+import Pagination from '../components/Pagination'
+import { usePagedQuery } from '../hooks/usePagedQuery'
+
+// שלד טעינה (animate-pulse) לטבלת התשלומים — מוצג בזמן שהעמוד הראשון נטען
+// או מתחלף (סינון/עימוד), במקום קפיצת "מסך ריק ואז מלא" (F27).
+function PaymentsTableSkeleton() {
+  return (
+    <div className="overflow-hidden rounded-lg border border-border bg-surface" data-testid="payments-page-skeleton">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-border text-right text-text-muted">
+            <th className="p-3 font-medium">תאריך</th>
+            <th className="p-3 font-medium">לקוח</th>
+            <th className="p-3 font-medium">תיאור</th>
+            <th className="p-3 font-medium">סכום</th>
+            <th className="p-3 font-medium">אמצעי</th>
+            <th className="p-3 font-medium">סטטוס</th>
+            <th className="p-3 font-medium">חשבונית</th>
+          </tr>
+        </thead>
+        <tbody>
+          {[0, 1, 2, 3, 4].map((i) => (
+            <tr key={i} className="border-b border-border/50">
+              {[0, 1, 2, 3, 4, 5, 6].map((j) => (
+                <td key={j} className="p-3">
+                  <div className="h-4 w-full max-w-[8rem] animate-pulse rounded bg-surface-2" />
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
 
 export default function PaymentsPage() {
   const { orgId } = useParams()
   useTitle('תשלומים')
-  const [payments, setPayments] = useState([])
-  const [loading, setLoading] = useState(true)
   const [status, setStatus] = useState('')
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
+  const [exporting, setExporting] = useState(false)
 
+  // ---- שאילתת הבסיס (משותפת לרשימה המעומדת, לצבירת ה-KPI ולייצוא ה-CSV) ----
+  // סינון סטטוס וטווח תאריכים בצד שרת (Item 7) — לא עוד .filter בצד לקוח על
+  // כל הטבלה. ה-range() עצמו מתווסף רק בצרכנים שצריכים עימוד (usePagedQuery,
+  // לולאת הייצוא) — שאילתת ה-KPI רצה בלי range כדי לצבור על כל התוצאות התואמות.
+  const baseListQuery = useCallback(() => {
+    let q = supabase
+      .from('payments')
+      .select('*, clients:client_id(id, name)', { count: 'exact' })
+      .eq('org_id', orgId)
+      .eq('is_archived', false)
+
+    if (status) q = q.eq('status', status)
+    if (from) q = q.gte('created_at', from)
+    if (to) q = q.lte('created_at', to + 'T23:59:59')
+
+    return q.order('created_at', { ascending: false, nullsFirst: false })
+  }, [orgId, status, from, to])
+
+  const buildQuery = useCallback((rangeFrom, rangeTo) => baseListQuery().range(rangeFrom, rangeTo), [baseListQuery])
+
+  const paged = usePagedQuery({
+    orgId,
+    buildQuery,
+    deps: [status, from, to],
+  })
+
+  // ---- KPI: סה"כ שולם/ממתין על *כל* התוצאות התואמות (לא רק העמוד המוצג) ----
+  // החלטה (ר' דוח המשימה): שאילתת-עזר קלה נוספת (status, amount בלבד — לא כל
+  // השורה) עם אותם סינונים כמו הרשימה אך בלי range, מצטברת בצד לקוח דרך
+  // sumByStatus — אותה תבנית כמו statusCounts ב-ClientsPage. עלות ה-scan
+  // מקובלת (אותו סדר גודל כמו הרשימה עצמה, פר-ארגון).
+  const [totals, setTotals] = useState({ pending: 0, paid: 0 })
+  const [totalsLoading, setTotalsLoading] = useState(true)
   useEffect(() => {
-    (async () => {
-      const { data } = await supabase
-        .from('payments')
-        .select('*, clients:client_id(id, name)')
-        .eq('org_id', orgId)
-        .eq('is_archived', false)
-        .order('created_at', { ascending: false })
-      setPayments(data || [])
-      setLoading(false)
-    })()
-  }, [orgId])
+    if (!orgId) return undefined
+    let active = true
+    async function loadTotals() {
+      setTotalsLoading(true)
+      let q = supabase.from('payments').select('status, amount').eq('org_id', orgId).eq('is_archived', false)
+      if (status) q = q.eq('status', status)
+      if (from) q = q.gte('created_at', from)
+      if (to) q = q.lte('created_at', to + 'T23:59:59')
+      const { data } = await q
+      if (!active) return
+      setTotals(sumByStatus(data || []))
+      setTotalsLoading(false)
+    }
+    loadTotals()
+    return () => {
+      active = false
+    }
+  }, [orgId, status, from, to])
 
-  const filtered = useMemo(
-    () => filterPayments(payments, { status: status || undefined, from: from || undefined, to: to || undefined }),
-    [payments, status, from, to],
-  )
-  const totals = sumByStatus(filtered)
-
-  function exportCSV() {
-    const rows = filtered.map((p) => paymentToCSVRow(p, p.clients?.name))
-    downloadCSV('payments.csv', exportRowsToCSV(PAYMENT_CSV_HEADERS, rows))
+  async function exportCSV() {
+    setExporting(true)
+    try {
+      const allRows = []
+      const EXPORT_PAGE = 1000
+      let rangeFrom = 0
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const rangeTo = rangeFrom + EXPORT_PAGE - 1
+        const { data, error: qError, count } = await baseListQuery().range(rangeFrom, rangeTo)
+        if (qError) throw qError
+        allRows.push(...(data || []))
+        if (!data || data.length < EXPORT_PAGE) break
+        rangeFrom += EXPORT_PAGE
+        if (typeof count === 'number' && rangeFrom >= count) break
+      }
+      const rows = allRows.map((p) => paymentToCSVRow(p, p.clients?.name))
+      downloadCSV('payments.csv', exportRowsToCSV(PAYMENT_CSV_HEADERS, rows))
+    } finally {
+      setExporting(false)
+    }
   }
-
-  if (loading) return <div className="p-6"><LoadingSpinner label="טוען תשלומים..." /></div>
 
   return (
     <div className="mx-auto max-w-6xl p-6" data-testid="payments-page">
@@ -58,50 +141,63 @@ export default function PaymentsPage() {
             className="rounded-md border border-border bg-bg px-2 py-1 text-sm text-text" data-testid="payments-from" />
           <input type="date" value={to} onChange={(e) => setTo(e.target.value)}
             className="rounded-md border border-border bg-bg px-2 py-1 text-sm text-text" data-testid="payments-to" />
-          <Button size="sm" variant="secondary" onClick={exportCSV} data-testid="payments-export-btn">⬇ ייצוא CSV</Button>
+          <Button size="sm" variant="secondary" onClick={exportCSV} loading={exporting} data-testid="payments-export-btn">⬇ ייצוא CSV</Button>
         </div>
       </div>
       <div className="mb-4 flex gap-6 text-sm text-text-muted" data-testid="payments-page-totals">
-        <span>שולם: <b className="text-text">{formatAmount(totals.paid)}</b></span>
-        <span>ממתין: <b className="text-text">{formatAmount(totals.pending)}</b></span>
-        <span>{filtered.length} תשלומים</span>
+        <span>שולם: <b className="text-text">{totalsLoading ? '…' : formatAmount(totals.paid)}</b></span>
+        <span>ממתין: <b className="text-text">{totalsLoading ? '…' : formatAmount(totals.pending)}</b></span>
+        <span>{paged.total.toLocaleString('he')} תשלומים</span>
       </div>
-      <div className="overflow-x-auto rounded-lg border border-border bg-surface">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border text-right text-text-muted">
-              <th className="p-3 font-medium">תאריך</th>
-              <th className="p-3 font-medium">לקוח</th>
-              <th className="p-3 font-medium">תיאור</th>
-              <th className="p-3 font-medium">סכום</th>
-              <th className="p-3 font-medium">אמצעי</th>
-              <th className="p-3 font-medium">סטטוס</th>
-              <th className="p-3 font-medium">חשבונית</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((p) => (
-              <tr key={p.id} className="border-b border-border/50" data-testid={`payments-page-row-${p.id}`}>
-                <td className="p-3 text-text-dim">{new Date(p.created_at).toLocaleDateString('he-IL')}</td>
-                <td className="p-3">
-                  <Link to={`/org/${orgId}/clients/${p.client_id}`} className="text-accent hover:underline">
-                    {p.clients?.name || '—'}
-                  </Link>
-                </td>
-                <td className="p-3 text-text-muted">{p.description}</td>
-                <td className="p-3 font-medium text-text">{formatAmount(p.amount)}</td>
-                <td className="p-3 text-text-dim">{p.method ? PAYMENT_METHODS[p.method]?.label : ''}</td>
-                <td className="p-3"><PaymentStatusChip status={p.status} /></td>
-                <td className="p-3">
-                  {p.invoice_url && <a className="text-accent hover:underline" href={p.invoice_url} target="_blank" rel="noreferrer">צפייה</a>}
-                </td>
+      {paged.loading ? (
+        <PaymentsTableSkeleton />
+      ) : (
+        <div className="overflow-x-auto rounded-lg border border-border bg-surface">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border text-right text-text-muted">
+                <th className="p-3 font-medium">תאריך</th>
+                <th className="p-3 font-medium">לקוח</th>
+                <th className="p-3 font-medium">תיאור</th>
+                <th className="p-3 font-medium">סכום</th>
+                <th className="p-3 font-medium">אמצעי</th>
+                <th className="p-3 font-medium">סטטוס</th>
+                <th className="p-3 font-medium">חשבונית</th>
               </tr>
-            ))}
-            {filtered.length === 0 && (
-              <tr><td colSpan={7} className="p-6 text-center text-text-dim" data-testid="payments-page-empty">אין תשלומים תואמים.</td></tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {paged.rows.map((p) => (
+                <tr key={p.id} className="border-b border-border/50" data-testid={`payments-page-row-${p.id}`}>
+                  <td className="p-3 text-text-dim">{new Date(p.created_at).toLocaleDateString('he-IL')}</td>
+                  <td className="p-3">
+                    <Link to={`/org/${orgId}/clients/${p.client_id}`} className="text-accent hover:underline">
+                      {p.clients?.name || '—'}
+                    </Link>
+                  </td>
+                  <td className="p-3 text-text-muted">{p.description}</td>
+                  <td className="p-3 font-medium text-text">{formatAmount(p.amount)}</td>
+                  <td className="p-3 text-text-dim">{p.method ? PAYMENT_METHODS[p.method]?.label : ''}</td>
+                  <td className="p-3"><PaymentStatusChip status={p.status} /></td>
+                  <td className="p-3">
+                    {p.invoice_url && <a className="text-accent hover:underline" href={p.invoice_url} target="_blank" rel="noreferrer">צפייה</a>}
+                  </td>
+                </tr>
+              ))}
+              {paged.rows.length === 0 && (
+                <tr><td colSpan={7} className="p-6 text-center text-text-dim" data-testid="payments-page-empty">אין תשלומים תואמים.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <div data-testid="payments-pagination">
+        <Pagination
+          page={paged.page}
+          setPage={paged.setPage}
+          pageSize={paged.pageSize}
+          setPageSize={paged.setPageSize}
+          total={paged.total}
+        />
       </div>
     </div>
   )
