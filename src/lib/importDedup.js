@@ -12,8 +12,10 @@
 //                lower(regexp_replace(trim(name), '\s+', ' ', 'g')).
 //   norm(email): JS  normalizeEmail — lower(trim); מחרוזת ריקה => null.
 //                SQL nullif(lower(trim(email)), '').
-//   norm(phone): JS  normalizePhone — ספרות בלבד, 9 הספרות האחרונות; פחות מ-7
-//                ספרות (כולל ריק) => null — הסף הזה כלול בתוך ה-JS twin.
+//   norm(phone): JS  normalizePhone — צורה קנונית ישראלית (לא "9 הספרות
+//                האחרונות" — זה היה התקלה שתוקנה, ר' תיעוד בפונקציה למטה):
+//                פחות מ-7 ספרות גולמיות (כולל ריק) => null — הסף הזה כלול
+//                בתוך ה-JS twin, ונבדק *לפני* הקנוניזציה (על הספרות הגולמיות).
 //                SQL public.normalize_phone(text) הוא נורמליזר גנרי טהור שכן
 //                *לא* כולל את הסף (משמש גם ב-search_org עתידי); find_import_duplicates
 //                אוכף את סף 7-הספרות בנפרד לפני שהוא משווה normalize_phone משני הצדדים.
@@ -31,10 +33,24 @@ export function normalizeEmail(s) {
   return v === '' ? null : v
 }
 
+// צורה קנונית ישראלית — תואם ל-normalize_phone ב-SQL (twin, ר' הערה למעלה).
+// היסטוריה: הגרסה הקודמת השוותה על "9 הספרות האחרונות", מה שמשווה נכון בין
+// +972 לנייד (12→9 ספרות) לבין 0-מקומי (10→9), אבל *לא* משווה נכון קווי-קרקע
+// בני 9 ספרות: '03-5551234' (9 ספרות, 0 מוביל נשמר) מול '+972-3-5551234'
+// (11 ספרות → 9 אחרונות = '235551234', שונה!). תוקן לצורה קנונית אמיתית:
+//   1. digits = רק ספרות.
+//   2. אם digits מתחיל ב-'972' וגם אורכו >= 11 → מסירים את קידומת ה-'972'
+//      (טופס בינלאומי).
+//   3. מסירים את *כל* האפסים המובילים.
+//   4. תוצאה ריקה => null.
+// הסף של 7 ספרות מינימום נבדק על הספרות הגולמיות (לפני קנוניזציה) — נשמר
+// כפי שהיה, כדי לא לשנות התנהגות לגבי מספרים קצרים.
 export function normalizePhone(s) {
   const digits = (s ?? '').replace(/\D/g, '')
   if (digits.length < 7) return null
-  return digits.slice(-9)
+  const withoutIntlPrefix = digits.startsWith('972') && digits.length >= 11 ? digits.slice(3) : digits
+  const canonical = withoutIntlPrefix.replace(/^0+/, '')
+  return canonical === '' ? null : canonical
 }
 
 // מפתח דה-דופ קריא (לדיבוג/לוגים) — לא משמש להשוואה בפועל, כי "טלפון תואם"

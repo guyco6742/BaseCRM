@@ -7,9 +7,21 @@ describe('normalizePhone (mirrors public.normalize_phone in migration_018)', () 
     expect(normalizePhone('+972-52-1234567')).toBe(normalizePhone('052-1234567'))
   })
 
-  it('normalizes to the last 9 digits', () => {
+  it('normalizes to the canonical Israeli form (972-prefix and leading zeros stripped)', () => {
     expect(normalizePhone('+972-52-1234567')).toBe('521234567')
     expect(normalizePhone('052-1234567')).toBe('521234567')
+  })
+
+  // Regression: previously compared on "last 9 digits", which equates +972
+  // mobiles with local form (12->9 vs 10->9 digits) but fails for 9-digit
+  // Israeli landlines: '03-5551234' -> '035551234' (9 digits, kept as-is)
+  // vs '+972-3-5551234' -> '97235551234' -> last 9 = '235551234' (different!).
+  // Found via live SQL smoke on dev. Fixed by canonicalizing (strip '972'
+  // prefix, then strip ALL leading zeros) instead of taking the last 9 digits.
+  it('treats a 9-digit landline and its +972 form as the same phone', () => {
+    expect(normalizePhone('03-5551234')).toBe(normalizePhone('+972-3-5551234'))
+    expect(normalizePhone('03-5551234')).toBe('35551234')
+    expect(normalizePhone('+972-3-5551234')).toBe('35551234')
   })
 
   it('returns null for a phone shorter than 7 digits', () => {
