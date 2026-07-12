@@ -1,7 +1,7 @@
 // src/components/Pagination.jsx
 // פקדי עימוד גנריים RTL: הקודם/הבא, "עמוד X מתוך Y", מונה רשומות וגודל עמוד.
-// שימוש חוזר לכל רשימה מעומדת בצד שרת (usePagedQuery) — לקוחות כרגע, ובעתיד
-// לוג-פעולות/דוחות-קידוח (§8 "Pagination infra" בספק).
+// שימוש חוזר לכל רשימה מעומדת בצד שרת (usePagedQuery) — כיום לקוחות ותשלומים,
+// ובעתיד לוג-פעולות/דוחות-קידוח (§8 "Pagination infra" בספק).
 import { PAGE_SIZE_OPTIONS } from '../hooks/usePagedQuery'
 
 export default function Pagination({ page, setPage, pageSize, setPageSize, total }) {
