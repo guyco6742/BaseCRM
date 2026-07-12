@@ -985,8 +985,40 @@ export default function ClientsPage() {
       )}
 
       {/* לקוח חדש */}
-      <Modal open={addOpen} onClose={closeAddModal} title="לקוח חדש" testid="add-client-modal">
-        <form onSubmit={handleCreate} onKeyDown={handleEnterAsTab} className="space-y-4">
+      <Modal
+        open={addOpen}
+        onClose={closeAddModal}
+        title="לקוח חדש"
+        testid="add-client-modal"
+        footer={
+          dupeWarning ? (
+            <>
+              <Button type="button" loading={saving} onClick={createClient} data-testid="client-create-anyway">
+                צור בכל זאת
+              </Button>
+              <Button type="button" variant="ghost" onClick={() => setDupeWarning(null)}>
+                ביטול
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button
+                type="submit"
+                form="add-client-form"
+                disabled={!newClient.name.trim()}
+                loading={saving || checkingDupe}
+                data-testid="client-create-submit"
+              >
+                צור לקוח
+              </Button>
+              <Button type="button" variant="ghost" onClick={closeAddModal}>
+                ביטול
+              </Button>
+            </>
+          )
+        }
+      >
+        <form id="add-client-form" onSubmit={handleCreate} onKeyDown={handleEnterAsTab} className="space-y-4">
           <Input
             label="שם הלקוח"
             value={newClient.name}
@@ -1076,7 +1108,8 @@ export default function ClientsPage() {
               </label>
             ))}
 
-          {/* אזהרת כפילות רכה (F19) — לא חוסמת; מציגה אישור נפרד לפני יצירה בפועל */}
+          {/* אזהרת כפילות רכה (F19) — לא חוסמת; כפתורי "צור בכל זאת"/"ביטול"
+              עוברים ל-footer של ה-Modal (מבנה גלילה עם footer מוצמד ממיין) */}
           {dupeWarning && (
             <p
               className="rounded-md border border-status-orange/40 bg-status-orange/10 p-3 text-sm text-status-orange"
@@ -1085,33 +1118,6 @@ export default function ClientsPage() {
               ייתכן שהלקוח כבר קיים במערכת (התאמה לפי אימייל/טלפון)
             </p>
           )}
-
-          <div className="flex justify-start gap-2">
-            {dupeWarning ? (
-              <>
-                <Button type="button" loading={saving} onClick={createClient} data-testid="client-create-anyway">
-                  צור בכל זאת
-                </Button>
-                <Button type="button" variant="ghost" onClick={() => setDupeWarning(null)}>
-                  ביטול
-                </Button>
-              </>
-            ) : (
-              <>
-                <Button
-                  type="submit"
-                  disabled={!newClient.name.trim()}
-                  loading={saving || checkingDupe}
-                  data-testid="client-create-submit"
-                >
-                  צור לקוח
-                </Button>
-                <Button type="button" variant="ghost" onClick={closeAddModal}>
-                  ביטול
-                </Button>
-              </>
-            )}
-          </div>
         </form>
       </Modal>
 
