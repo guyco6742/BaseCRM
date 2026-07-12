@@ -124,9 +124,12 @@ begin
           and public.normalize_phone(c.phone) = public.normalize_phone(r.v_phone_raw)
         )
       )
-    -- אימייל מנצח אם שתי ההתאמות מתקיימות בו-זמנית עבור אותה שורה
+    -- אימייל מנצח אם שתי ההתאמות מתקיימות בו-זמנית עבור אותה שורה;
+    -- c.id כמפתח-שובר-שוויון אחרון => client_id דטרמיניסטי גם כשכמה לקוחות
+    -- תואמים שורה רק לפי טלפון (אחרת ההחזרה לא יציבה בין הרצות).
     order by r.i,
-      case when r.v_email is not null and lower(trim(c.email)) = r.v_email then 0 else 1 end
+      case when r.v_email is not null and lower(trim(c.email)) = r.v_email then 0 else 1 end,
+      c.id
   )
   select coalesce(jsonb_agg(jsonb_build_object(
     'i', m.i,

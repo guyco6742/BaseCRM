@@ -26,13 +26,19 @@ async function sendInviteEmail({
   if (!apiKey) return false // ללא מפתח — no-op חינני, לא כשל
 
   const from = Deno.env.get('RESEND_FROM') ?? 'BaseCRM <onboarding@resend.dev>'
+  // שם הארגון והמזמין הם קלט משתמש — חובה escaping לפני הזרקה ל-HTML של המייל,
+  // אחרת שם ארגון כמו <a href="..."> היה מתרנדר כמרקאפ חי (וקטור פישינג).
+  const esc = (v: string) =>
+    v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+  const orgNameHtml = esc(orgName)
+  const inviterNameHtml = esc(inviterName)
   const subject = `הוזמנת להצטרף ל-${orgName} ב-BaseCRM`
   const html = `
     <div dir="rtl" lang="he" style="font-family: Arial, Helvetica, sans-serif; background:#f5f5f5; padding:24px;">
       <div style="max-width:480px; margin:0 auto; background:#ffffff; border-radius:8px; padding:32px; color:#1f2937;">
-        <h1 style="font-size:18px; margin:0 0 16px;">הוזמנת להצטרף ל-${orgName}</h1>
+        <h1 style="font-size:18px; margin:0 0 16px;">הוזמנת להצטרף ל-${orgNameHtml}</h1>
         <p style="font-size:14px; line-height:1.6; margin:0 0 24px;">
-          ${inviterName} הזמין/ה אותך להצטרף לארגון <strong>${orgName}</strong> במערכת BaseCRM.
+          ${inviterNameHtml} הזמין/ה אותך להצטרף לארגון <strong>${orgNameHtml}</strong> במערכת BaseCRM.
         </p>
         <div style="text-align:center; margin:0 0 24px;">
           <a href="${inviteUrl}"
