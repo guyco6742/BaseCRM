@@ -293,6 +293,12 @@ $$;
 revoke all on function public.get_org_report(uuid, text, date, date) from public;
 grant execute on function public.get_org_report(uuid, text, date, date) to authenticated;
 
+-- Supabase מעניקה כברירת מחדל EXECUTE ל-anon ישירות על פונקציות public חדשות;
+-- revoke מפורש כדי ש-anon לא יוכל אפילו להפעיל את שני ה-RPC-ים (ה-guard
+-- is_org_member כבר חוסם גישה לנתונים — זו הגנה-בעומק).
+revoke execute on function public.get_org_dashboard(uuid) from anon;
+revoke execute on function public.get_org_report(uuid, text, date, date) from anon;
+
 -- ----------------------------------------------------------------------------
 -- 3. אינדקסים תומכי-דפדוף (Item 7 — נחתים כאן כי הם משרתים גם את הדוחות)
 -- ----------------------------------------------------------------------------

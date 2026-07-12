@@ -145,3 +145,6 @@ $$;
 
 revoke all on function public.find_import_duplicates(uuid, jsonb) from public;
 grant execute on function public.find_import_duplicates(uuid, jsonb) to authenticated;
+-- Supabase מעניקה כברירת מחדל EXECUTE ל-anon; revoke מפורש (הגנה-בעומק —
+-- ה-guard is_org_member כבר חוסם, ר' הערה זהה ב-migration_017).
+revoke execute on function public.find_import_duplicates(uuid, jsonb) from anon;
