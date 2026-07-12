@@ -5,7 +5,7 @@ const VALID_ROLES = ['admin', 'member']
 const RESEND_COOLDOWN_MS = 60 * 1000
 
 function buildInviteUrl(token: string): string {
-  const appUrl = Deno.env.get('APP_URL') ?? 'https://basecrm-app.netlify.app'
+  const appUrl = Deno.env.get('APP_URL') ?? 'https://base-crm-kohl.vercel.app'
   return `${appUrl}/accept-invite?token=${token}`
 }
 

@@ -29,7 +29,7 @@ Deno.serve(async (req) => {
     if (insErr) return json({ error: 'db insert failed' }, 500)
 
     try {
-      const appUrl = Deno.env.get('APP_BASE_URL') ?? 'https://basecrm-app.netlify.app'
+      const appUrl = Deno.env.get('APP_BASE_URL') ?? 'https://base-crm-kohl.vercel.app'
       const { url, providerRef } = await createPaymentLink(account.credentials, {
         amount: Number(amount), description: description ?? 'תשלום',
         clientName: client.name, clientEmail: client.email ?? undefined,

@@ -40,14 +40,21 @@ export async function requireOrgAdmin(req: Request, orgId: string): Promise<{ us
   return { userId: user.id }
 }
 
+const CORS_ALLOW_HEADERS = 'authorization, content-type, apikey, x-client-info'
+
 export function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, content-type, apikey' },
+    headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': CORS_ALLOW_HEADERS },
   })
 }
 
 export function corsPreflight(req: Request): Response | null {
-  if (req.method === 'OPTIONS') return json(null, 204)
+  if (req.method === 'OPTIONS') {
+    return new Response(null, {
+      status: 204,
+      headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': CORS_ALLOW_HEADERS },
+    })
+  }
   return null
 }
