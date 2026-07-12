@@ -63,6 +63,10 @@ describe('isValidIsraeliPhone', () => {
     expect(isValidIsraeliPhone('1234567890123')).toBe(false)
   })
 
+  it('rejects a 10-digit non-Israeli-shaped number (canonical stays 10 digits, outside [8,9])', () => {
+    expect(isValidIsraeliPhone('1234567890')).toBe(false)
+  })
+
   it('rejects non-numeric junk', () => {
     expect(isValidIsraeliPhone('abc-defg')).toBe(false)
   })

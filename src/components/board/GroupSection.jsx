@@ -123,7 +123,8 @@ export default function GroupSection({
   orgId,
   canEdit,
   isAdmin,
-  total,          // סה"כ פריטים לא-מושבתים בקבוצה (עשוי להיות גדול מ-items.length — חלון טעון חלקי)
+  total,          // סה"כ פריטים לא-מושבתים בקבוצה (קירוב — לתווית הכפתור בלבד)
+  lastBatchFull,  // האם הבאץ' האחרון שנטען מהשרת היה מלא (100) — קובע את נראות "טען עוד"
   loadingMore,    // האם "טען עוד" הזו בטעינה כרגע
   onAddItem,
   onArchiveGroup,
@@ -131,20 +132,30 @@ export default function GroupSection({
   onItemValue,
   onArchiveItem,
   onArchiveColumn,
-  onLoadMore,     // (group) => Promise — טוען את 100 הפריטים הבאים לקבוצה זו
+  onLoadMore,     // (group) => Promise — טוען את 100 הפריטים הבאים לקבוצה זו (keyset)
 }) {
   const [collapsed, setCollapsed] = useState(false)
   const [newName, setNewName] = useState('')
+  const [addingItem, setAddingItem] = useState(false)
 
   const gridTemplate = `minmax(220px, 1fr) repeat(${columns.length}, 160px) 40px`
   const totalCount = typeof total === 'number' ? total : items.length
-  const hasMore = totalCount > items.length
+  // נראות "טען עוד" מבוססת lastBatchFull (התאוששות עצמית — לא רגישה לסחיפה
+  // ב-total מכל מוטציה אופטימית), לא על total > items.length.
+  const hasMore = Boolean(lastBatchFull)
+  const remainingLabel = Math.max(totalCount - items.length, 0)
 
-  function submitNew(e) {
+  async function submitNew(e) {
     e.preventDefault()
-    if (!newName.trim()) return
-    onAddItem(group, newName.trim())
-    setNewName('')
+    if (!newName.trim() || addingItem) return // מגן מפני שליחה כפולה בזמן שההוספה הקודמת עדיין ב-flight
+    const name = newName.trim()
+    setNewName('') // ה-UX האופטימי נשמר — השדה מתרוקן מיד
+    setAddingItem(true)
+    try {
+      await onAddItem(group, name)
+    } finally {
+      setAddingItem(false)
+    }
   }
 
   return (
@@ -233,8 +244,9 @@ export default function GroupSection({
                 <input
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
+                  disabled={addingItem}
                   placeholder="+ הוסף פריט"
-                  className="w-full bg-transparent text-sm text-text outline-none placeholder:text-text-dim"
+                  className="w-full bg-transparent text-sm text-text outline-none placeholder:text-text-dim disabled:opacity-60"
                   data-testid={`add-item-input-${group.id}`}
                 />
               </div>
@@ -251,7 +263,7 @@ export default function GroupSection({
                 className="text-sm text-accent hover:underline disabled:cursor-not-allowed disabled:opacity-50"
                 data-testid={`board-loadmore-${group.id}`}
               >
-                {loadingMore ? 'טוען...' : `טען עוד (${totalCount - items.length} נוספים)`}
+                {loadingMore ? 'טוען...' : remainingLabel > 0 ? `טען עוד (${remainingLabel} נוספים)` : 'טען עוד'}
               </button>
             </div>
           )}

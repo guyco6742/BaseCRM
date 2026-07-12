@@ -37,11 +37,26 @@ export default function BoardPage() {
   const [columns, setColumns] = useState([])
   const [groups, setGroups] = useState([])
   // items מכיל רק את החלונות הטעונים (עד 100 לקבוצה, יותר אחרי "טען עוד") —
-  // לא את כל פריטי הבורד. groupMeta עוקב אחרי loaded/total פר-קבוצה כדי לדעת
-  // מתי להציג "טען עוד" וכמה פריטים נותרו.
+  // לא את כל פריטי הבורד. groupMeta עוקב אחרי cursor/total/lastBatchFull
+  // פר-קבוצה כדי לדעת מתי להציג "טען עוד" וכמה פריטים נותרו.
+  //
+  // עיקרון keyset (cursor על position) — ולמה נטשנו offsets:
+  // "טען עוד" הישן היה מבוסס range(loaded, loaded+99), בהנחה שהחלון הטעון
+  // רציף-אופסטית מול ה-DB. אבל addItem האופטימי (position = max+1) ו-
+  // moveItemToGroup מוסיפים/מסירים פריטים מהחלון בלי לגעת ב-DB באופן
+  // שתואם offsets — כך ש"loaded" בצד הלקוח מתנתק מהאופסט האמיתי בשרת,
+  // וה-range הבא מדלג על שורה אחת ומחזיר כפילות id של שורה שכבר נטענה.
+  // הפתרון: cursor = ה-position המקסימלי מבין השורות שנטענו בפועל מהשרת.
+  // "טען עוד" שולף WHERE position > cursor (לא תלוי כלל בכמה פריטים יש
+  // כרגע ב-state), ומוסיף רק שורות שה-id שלהן לא כבר קיים ב-items (דה-דופ
+  // בטוח). מכיוון שה-query מבוסס position ולא offset, מוטציות אופטימיות
+  // (הוספה/העברה/השבתה) לא יכולות לגרום לדילוג על שורה — לכל היותר שורה
+  // שכבר בצד הלקוח תסונן ע"י הדה-דופ. total נשאר קירוב (±1 בכל מוטציה
+  // אופטימית) ומשמש רק לתווית הכפתור; נראות הכפתור עצמה נשענת על
+  // lastBatchFull (התאוששות עצמית, לא רגישה לסחיפה ב-total).
   const [items, setItems] = useState([])
-  const [groupMeta, setGroupMeta] = useState({}) // { [groupId]: { loaded, total } }
-  const [loadingMoreGroupId, setLoadingMoreGroupId] = useState(null)
+  const [groupMeta, setGroupMeta] = useState({}) // { [groupId]: { cursor, total, lastBatchFull } }
+  const [loadingMoreGroupIds, setLoadingMoreGroupIds] = useState(() => new Set())
   const [clients, setClients] = useState([])
   const [metaLoading, setMetaLoading] = useState(true) // board/columns/groups/clients
   const [itemsLoading, setItemsLoading] = useState(true) // חלונות הפריטים הראשוניים
@@ -133,7 +148,12 @@ export default function BoardPage() {
         const g = groupList[idx]
         const rows = res.data || []
         nextItems.push(...rows)
-        nextMeta[g.id] = { loaded: rows.length, total: res.count ?? rows.length }
+        const cursor = rows.length ? Math.max(...rows.map((r) => r.position)) : null
+        nextMeta[g.id] = {
+          cursor,
+          total: res.count ?? rows.length,
+          lastBatchFull: rows.length === ITEMS_PAGE_SIZE,
+        }
       })
       setItems(nextItems)
       setGroupMeta(nextMeta)
@@ -154,31 +174,50 @@ export default function BoardPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [boardId, orgId])
 
-  // "טען עוד" לקבוצה בודדת — מוסיף 100 פריטים נוספים לחלון הטעון שלה.
+  // "טען עוד" לקבוצה בודדת — keyset: שולף שורות עם position > cursor (לא
+  // תלוי במספר הפריטים הטעונים כרגע), ומוסיף רק שורות שה-id שלהן עדיין לא
+  // ב-items (דה-דופ) — כך שמוטציות אופטימיות לא גורמות לדילוג/כפילות.
   async function loadMoreForGroup(group) {
-    const meta = groupMeta[group.id] || { loaded: 0, total: 0 }
-    setLoadingMoreGroupId(group.id)
+    if (loadingMoreGroupIds.has(group.id)) return // מגן פר-קבוצה מפני קליק כפול תוך כדי טעינה
+    const meta = groupMeta[group.id] || { cursor: null, total: 0, lastBatchFull: false }
+    setLoadingMoreGroupIds((prev) => new Set(prev).add(group.id))
     try {
-      const from = meta.loaded
-      const to = from + ITEMS_PAGE_SIZE - 1
-      const { data, error: qError, count } = await supabase
+      let query = supabase
         .from('items')
-        .select('*', { count: 'exact' })
+        .select('*')
         .eq('group_id', group.id)
         .eq('is_archived', false)
         .order('position')
-        .range(from, to)
+        .limit(ITEMS_PAGE_SIZE)
+      if (meta.cursor != null) query = query.gt('position', meta.cursor)
+      const { data, error: qError } = await query
       if (qError) throw qError
       const rows = data || []
-      setItems((prev) => [...prev, ...rows])
-      setGroupMeta((prev) => ({
-        ...prev,
-        [group.id]: { loaded: from + rows.length, total: count ?? prev[group.id]?.total ?? 0 },
-      }))
+      setItems((prev) => {
+        const existingIds = new Set(prev.map((i) => i.id))
+        const newRows = rows.filter((r) => !existingIds.has(r.id))
+        return [...prev, ...newRows]
+      })
+      setGroupMeta((prev) => {
+        const prevMeta = prev[group.id] || { cursor: null, total: 0, lastBatchFull: false }
+        const newCursor = rows.length ? Math.max(...rows.map((r) => r.position)) : prevMeta.cursor
+        return {
+          ...prev,
+          [group.id]: {
+            ...prevMeta,
+            cursor: newCursor,
+            lastBatchFull: rows.length === ITEMS_PAGE_SIZE,
+          },
+        }
+      })
     } catch {
       toast('טעינת פריטים נוספים נכשלה', 'error')
     } finally {
-      setLoadingMoreGroupId(null)
+      setLoadingMoreGroupIds((prev) => {
+        const next = new Set(prev)
+        next.delete(group.id)
+        return next
+      })
     }
   }
 
@@ -239,10 +278,13 @@ export default function BoardPage() {
         return setError('הוספת הפריט נכשלה.')
       }
       setItems((prev) => [...prev, data])
+      // לא נוגעים ב-cursor/lastBatchFull — רק total (קירוב לתווית הכפתור
+      // בלבד). הדה-דופ ב-loadMoreForGroup דואג שהפריט הזה לא ייכפל מאוחר
+      // יותר אם ייטען שוב דרך ה-keyset query.
       setGroupMeta((prev) => ({
         ...prev,
         [group.id]: {
-          loaded: (prev[group.id]?.loaded ?? 0) + 1,
+          ...(prev[group.id] || { cursor: null, lastBatchFull: false }),
           total: (prev[group.id]?.total ?? 0) + 1,
         },
       }))
@@ -285,19 +327,22 @@ export default function BoardPage() {
     [toast]
   )
 
-  // העברת משימה לקבוצה אחרת — בין שני "חלונות" טעונים; מעדכן גם את
-  // ה-loaded/total האופטימיים של שתי הקבוצות (מקור/יעד) בהתאם.
+  // העברת משימה לקבוצה אחרת — בין שני "חלונות" טעונים; מעדכן רק את total
+  // האופטימי של שתי הקבוצות (מקור/יעד) לצורך תווית הכפתור. cursor/
+  // lastBatchFull לא זזים — הפריט המועבר כבר קיים ב-items (state), ודה-דופ
+  // ה-id ב-loadMoreForGroup מבטיח שהוא לא ייכפל אם ה-keyset query יחזיר
+  // אותו שוב אחרי שינוי ה-group_id.
   async function moveItemToGroup(item, groupId) {
     const prevGroupId = item.group_id
     setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, group_id: groupId } : i)))
     setGroupMeta((prev) => ({
       ...prev,
       [prevGroupId]: {
-        loaded: Math.max(0, (prev[prevGroupId]?.loaded ?? 1) - 1),
+        ...(prev[prevGroupId] || { cursor: null, lastBatchFull: false }),
         total: Math.max(0, (prev[prevGroupId]?.total ?? 1) - 1),
       },
       [groupId]: {
-        loaded: (prev[groupId]?.loaded ?? 0) + 1,
+        ...(prev[groupId] || { cursor: null, lastBatchFull: false }),
         total: (prev[groupId]?.total ?? 0) + 1,
       },
     }))
@@ -310,11 +355,11 @@ export default function BoardPage() {
       setGroupMeta((prev) => ({
         ...prev,
         [prevGroupId]: {
-          loaded: (prev[prevGroupId]?.loaded ?? 0) + 1,
+          ...(prev[prevGroupId] || { cursor: null, lastBatchFull: false }),
           total: (prev[prevGroupId]?.total ?? 0) + 1,
         },
         [groupId]: {
-          loaded: Math.max(0, (prev[groupId]?.loaded ?? 1) - 1),
+          ...(prev[groupId] || { cursor: null, lastBatchFull: false }),
           total: Math.max(0, (prev[groupId]?.total ?? 1) - 1),
         },
       }))
@@ -327,10 +372,11 @@ export default function BoardPage() {
   const archiveItem = useCallback(
     async (item) => {
       setItems((prev) => prev.filter((i) => i.id !== item.id))
+      // total -1 בלבד (תווית הכפתור); cursor/lastBatchFull ללא שינוי.
       setGroupMeta((prev) => ({
         ...prev,
         [item.group_id]: {
-          loaded: Math.max(0, (prev[item.group_id]?.loaded ?? 1) - 1),
+          ...(prev[item.group_id] || { cursor: null, lastBatchFull: false }),
           total: Math.max(0, (prev[item.group_id]?.total ?? 1) - 1),
         },
       }))
@@ -366,7 +412,7 @@ export default function BoardPage() {
         return setError('יצירת הקבוצה נכשלה.')
       }
       setGroups((prev) => [...prev, data])
-      setGroupMeta((prev) => ({ ...prev, [data.id]: { loaded: 0, total: 0 } }))
+      setGroupMeta((prev) => ({ ...prev, [data.id]: { cursor: null, total: 0, lastBatchFull: false } }))
       setGroupName('')
       setAddGroupOpen(false)
       toast('הקבוצה נוצרה בהצלחה')
@@ -662,7 +708,8 @@ export default function BoardPage() {
                     canEdit={canEdit}
                     isAdmin={isAdmin}
                     total={groupMeta[group.id]?.total}
-                    loadingMore={loadingMoreGroupId === group.id}
+                    lastBatchFull={groupMeta[group.id]?.lastBatchFull ?? false}
+                    loadingMore={loadingMoreGroupIds.has(group.id)}
                     onAddItem={addItem}
                     onArchiveGroup={archiveGroup}
                     onItemName={updateItemName}
