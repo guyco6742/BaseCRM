@@ -22,7 +22,7 @@ export default function Navbar() {
     >
       <div className="flex items-center gap-6">
         <Link to="/" className="text-xl font-bold text-text" data-testid="navbar-home-link">
-          Base<span className="text-accent">CRM</span>
+          work-<span className="text-accent">it</span>
         </Link>
         {isSuperAdmin && (
           <Link

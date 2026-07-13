@@ -9,7 +9,7 @@ import LoadingSpinner from '../components/ui/LoadingSpinner'
 import Button from '../components/ui/Button'
 import Modal from '../components/ui/Modal'
 import Input from '../components/ui/Input'
-import GroupSection from '../components/board/GroupSection'
+import GroupSection, { GroupSectionSkeleton } from '../components/board/GroupSection'
 import BoardKanban from '../components/board/BoardKanban'
 import ItemModal from '../components/board/ItemModal'
 import AddColumnModal from '../components/board/AddColumnModal'
@@ -21,6 +21,11 @@ import { handleEnterAsTab } from '../lib/formNav'
 import { exportRowsToCSV, downloadCSV } from '../lib/csv'
 import FavoriteStarButton from '../components/FavoriteStarButton'
 
+// גודל חלון-הטעינה הראשוני לכל קבוצה, ואורך כל "טען עוד" נוסף (Item 7 — F8).
+// הבורד לא מעומד כרשימה שטוחה: כל קבוצה טוענת עד 100 פריטים ראשונים, וקבוצה
+// עם יותר מ-100 מציגה כפתור "טען עוד" שמוסיף עוד 100 (ר' §7 Item 7 בספק).
+const ITEMS_PAGE_SIZE = 100
+
 export default function BoardPage() {
   const { boardId } = useParams()
   const { orgId, isAdmin, role, members: orgMembers } = useOrg()
@@ -31,9 +36,31 @@ export default function BoardPage() {
   const [board, setBoard] = useState(null)
   const [columns, setColumns] = useState([])
   const [groups, setGroups] = useState([])
+  // items מכיל רק את החלונות הטעונים (עד 100 לקבוצה, יותר אחרי "טען עוד") —
+  // לא את כל פריטי הבורד. groupMeta עוקב אחרי cursor/total/lastBatchFull
+  // פר-קבוצה כדי לדעת מתי להציג "טען עוד" וכמה פריטים נותרו.
+  //
+  // עיקרון keyset (cursor על position) — ולמה נטשנו offsets:
+  // "טען עוד" הישן היה מבוסס range(loaded, loaded+99), בהנחה שהחלון הטעון
+  // רציף-אופסטית מול ה-DB. אבל addItem האופטימי (position = max+1) ו-
+  // moveItemToGroup מוסיפים/מסירים פריטים מהחלון בלי לגעת ב-DB באופן
+  // שתואם offsets — כך ש"loaded" בצד הלקוח מתנתק מהאופסט האמיתי בשרת,
+  // וה-range הבא מדלג על שורה אחת ומחזיר כפילות id של שורה שכבר נטענה.
+  // הפתרון: cursor = ה-position המקסימלי מבין השורות שנטענו בפועל מהשרת.
+  // "טען עוד" שולף WHERE position > cursor (לא תלוי כלל בכמה פריטים יש
+  // כרגע ב-state), ומוסיף רק שורות שה-id שלהן לא כבר קיים ב-items (דה-דופ
+  // בטוח). מכיוון שה-query מבוסס position ולא offset, מוטציות אופטימיות
+  // (הוספה/העברה/השבתה) לא יכולות לגרום לדילוג על שורה — לכל היותר שורה
+  // שכבר בצד הלקוח תסונן ע"י הדה-דופ. total נשאר קירוב (±1 בכל מוטציה
+  // אופטימית) ומשמש רק לתווית הכפתור; נראות הכפתור עצמה נשענת על
+  // lastBatchFull (התאוששות עצמית, לא רגישה לסחיפה ב-total).
   const [items, setItems] = useState([])
+  const [groupMeta, setGroupMeta] = useState({}) // { [groupId]: { cursor, total, lastBatchFull } }
+  const [loadingMoreGroupIds, setLoadingMoreGroupIds] = useState(() => new Set())
   const [clients, setClients] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [metaLoading, setMetaLoading] = useState(true) // board/columns/groups/clients
+  const [itemsLoading, setItemsLoading] = useState(true) // חלונות הפריטים הראשוניים
+  const [exporting, setExporting] = useState(false)
   const [error, setError] = useState('')
 
   const [addColumnOpen, setAddColumnOpen] = useState(false)
@@ -62,35 +89,137 @@ export default function BoardPage() {
     localStorage.setItem(`basecrm.boardView:${boardId}`, v)
   }
 
-  async function load() {
-    setLoading(true)
+  // מטא-דאטה של הבורד: בורד/עמודות/קבוצות/לקוחות — קלים, לא מעומדים.
+  // מוחזר groupList כדי ש-loadItemWindows יוכל לרוץ מיד אחרי, בלי לחכות
+  // לרינדור נוסף שיקרא את groups מה-state (שעדיין לא התעדכן באותו tick).
+  async function loadMeta() {
+    setMetaLoading(true)
     try {
-      const [bRes, cRes, gRes, iRes, clRes] = await Promise.all([
+      const [bRes, cRes, gRes, clRes] = await Promise.all([
         supabase.from('boards').select('*').eq('id', boardId).maybeSingle(),
         // עמודות: טוענים הכל (כולל מושבתות) לניהול; הסינון לתצוגה נעשה בצד הלקוח
         supabase.from('columns').select('*').eq('board_id', boardId).order('position'),
         supabase.from('groups').select('*').eq('board_id', boardId).eq('is_archived', false).order('position'),
-        supabase.from('items').select('*').eq('board_id', boardId).eq('is_archived', false).order('position'),
         // לקוחות הארגון — לעמודות מסוג "לקוח"
         supabase.from('clients').select('id, name').eq('org_id', orgId).eq('is_archived', false).order('name'),
       ])
       if (bRes.error) throw bRes.error
       setBoard(bRes.data)
       setColumns(cRes.data || [])
-      setGroups(gRes.data || [])
-      setItems(iRes.data || [])
+      const groupList = gRes.data || []
+      setGroups(groupList)
       setClients(clRes.data || [])
+      return groupList
     } catch {
       setError('טעינת הבורד נכשלה.')
+      return []
     } finally {
-      setLoading(false)
+      setMetaLoading(false)
     }
+  }
+
+  // חלון הפריטים הראשוני (עד 100) לכל קבוצה — שאילתה אחת פר-קבוצה (Promise.all),
+  // כל אחת מחזירה גם count:'exact' כדי לדעת אם יש עוד להציג "טען עוד" (Item 7).
+  // מספר הקבוצות בפועל נמוך (~10 בדרך כלל) — N מקביל מקובל, עדיף על שאילתה
+  // שטוחה אחת ל-.range(0,500) שהייתה מפרה את החלוקה הבטוחה-פר-קבוצה מהספק.
+  async function loadItemWindows(groupList) {
+    if (groupList.length === 0) {
+      setItems([])
+      setGroupMeta({})
+      setItemsLoading(false)
+      return
+    }
+    setItemsLoading(true)
+    try {
+      const results = await Promise.all(
+        groupList.map((g) =>
+          supabase
+            .from('items')
+            .select('*', { count: 'exact' })
+            .eq('group_id', g.id)
+            .eq('is_archived', false)
+            .order('position')
+            .range(0, ITEMS_PAGE_SIZE - 1)
+        )
+      )
+      const nextItems = []
+      const nextMeta = {}
+      results.forEach((res, idx) => {
+        const g = groupList[idx]
+        const rows = res.data || []
+        nextItems.push(...rows)
+        const cursor = rows.length ? Math.max(...rows.map((r) => r.position)) : null
+        nextMeta[g.id] = {
+          cursor,
+          total: res.count ?? rows.length,
+          lastBatchFull: rows.length === ITEMS_PAGE_SIZE,
+        }
+      })
+      setItems(nextItems)
+      setGroupMeta(nextMeta)
+    } catch {
+      setError('טעינת הפריטים נכשלה.')
+    } finally {
+      setItemsLoading(false)
+    }
+  }
+
+  async function load() {
+    const groupList = await loadMeta()
+    await loadItemWindows(groupList)
   }
 
   useEffect(() => {
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [boardId, orgId])
+
+  // "טען עוד" לקבוצה בודדת — keyset: שולף שורות עם position > cursor (לא
+  // תלוי במספר הפריטים הטעונים כרגע), ומוסיף רק שורות שה-id שלהן עדיין לא
+  // ב-items (דה-דופ) — כך שמוטציות אופטימיות לא גורמות לדילוג/כפילות.
+  async function loadMoreForGroup(group) {
+    if (loadingMoreGroupIds.has(group.id)) return // מגן פר-קבוצה מפני קליק כפול תוך כדי טעינה
+    const meta = groupMeta[group.id] || { cursor: null, total: 0, lastBatchFull: false }
+    setLoadingMoreGroupIds((prev) => new Set(prev).add(group.id))
+    try {
+      let query = supabase
+        .from('items')
+        .select('*')
+        .eq('group_id', group.id)
+        .eq('is_archived', false)
+        .order('position')
+        .limit(ITEMS_PAGE_SIZE)
+      if (meta.cursor != null) query = query.gt('position', meta.cursor)
+      const { data, error: qError } = await query
+      if (qError) throw qError
+      const rows = data || []
+      setItems((prev) => {
+        const existingIds = new Set(prev.map((i) => i.id))
+        const newRows = rows.filter((r) => !existingIds.has(r.id))
+        return [...prev, ...newRows]
+      })
+      setGroupMeta((prev) => {
+        const prevMeta = prev[group.id] || { cursor: null, total: 0, lastBatchFull: false }
+        const newCursor = rows.length ? Math.max(...rows.map((r) => r.position)) : prevMeta.cursor
+        return {
+          ...prev,
+          [group.id]: {
+            ...prevMeta,
+            cursor: newCursor,
+            lastBatchFull: rows.length === ITEMS_PAGE_SIZE,
+          },
+        }
+      })
+    } catch {
+      toast('טעינת פריטים נוספים נכשלה', 'error')
+    } finally {
+      setLoadingMoreGroupIds((prev) => {
+        const next = new Set(prev)
+        next.delete(group.id)
+        return next
+      })
+    }
+  }
 
   // סופר-אדמין שקוף לארגון — לא מופיע כבחירה בעמודות "אחראי"
   const members = useMemo(
@@ -118,9 +247,20 @@ export default function BoardPage() {
   )
 
   // ---- פעולות פריטים ----
+  // מיקום פריט חדש: שולפים את ה-position המקסימלי בפועל מה-DB (לא את אורך
+  // החלון הטעון) — כדי לא להתנגש עם פריטים לא-טעונים כשבקבוצה יש יותר מ-100
+  // פריטים ורק החלון הראשון נטען (Item 7 — "טען עוד" פר-קבוצה).
   const addItem = useCallback(
     async (group, name, values = {}) => {
-      const groupItems = items.filter((i) => i.group_id === group.id)
+      const { data: maxRow } = await supabase
+        .from('items')
+        .select('position')
+        .eq('group_id', group.id)
+        .eq('is_archived', false)
+        .order('position', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      const position = (maxRow?.position ?? -1) + 1
       const { data, error } = await supabase
         .from('items')
         .insert({
@@ -129,7 +269,7 @@ export default function BoardPage() {
           group_id: group.id,
           name,
           values,
-          position: groupItems.length,
+          position,
         })
         .select()
         .single()
@@ -138,8 +278,18 @@ export default function BoardPage() {
         return setError('הוספת הפריט נכשלה.')
       }
       setItems((prev) => [...prev, data])
+      // לא נוגעים ב-cursor/lastBatchFull — רק total (קירוב לתווית הכפתור
+      // בלבד). הדה-דופ ב-loadMoreForGroup דואג שהפריט הזה לא ייכפל מאוחר
+      // יותר אם ייטען שוב דרך ה-keyset query.
+      setGroupMeta((prev) => ({
+        ...prev,
+        [group.id]: {
+          ...(prev[group.id] || { cursor: null, lastBatchFull: false }),
+          total: (prev[group.id]?.total ?? 0) + 1,
+        },
+      }))
     },
-    [items, orgId, boardId, toast]
+    [orgId, boardId, toast]
   )
 
   const updateItemName = useCallback(
@@ -177,15 +327,42 @@ export default function BoardPage() {
     [toast]
   )
 
-  // העברת משימה לקבוצה אחרת
+  // העברת משימה לקבוצה אחרת — בין שני "חלונות" טעונים; מעדכן רק את total
+  // האופטימי של שתי הקבוצות (מקור/יעד) לצורך תווית הכפתור. cursor/
+  // lastBatchFull לא זזים — הפריט המועבר כבר קיים ב-items (state), ודה-דופ
+  // ה-id ב-loadMoreForGroup מבטיח שהוא לא ייכפל אם ה-keyset query יחזיר
+  // אותו שוב אחרי שינוי ה-group_id.
   async function moveItemToGroup(item, groupId) {
+    const prevGroupId = item.group_id
     setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, group_id: groupId } : i)))
+    setGroupMeta((prev) => ({
+      ...prev,
+      [prevGroupId]: {
+        ...(prev[prevGroupId] || { cursor: null, lastBatchFull: false }),
+        total: Math.max(0, (prev[prevGroupId]?.total ?? 1) - 1),
+      },
+      [groupId]: {
+        ...(prev[groupId] || { cursor: null, lastBatchFull: false }),
+        total: (prev[groupId]?.total ?? 0) + 1,
+      },
+    }))
     const { error } = await supabase
       .from('items')
       .update({ group_id: groupId, updated_at: new Date().toISOString() })
       .eq('id', item.id)
     if (error) {
-      setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, group_id: item.group_id } : i)))
+      setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, group_id: prevGroupId } : i)))
+      setGroupMeta((prev) => ({
+        ...prev,
+        [prevGroupId]: {
+          ...(prev[prevGroupId] || { cursor: null, lastBatchFull: false }),
+          total: (prev[prevGroupId]?.total ?? 0) + 1,
+        },
+        [groupId]: {
+          ...(prev[groupId] || { cursor: null, lastBatchFull: false }),
+          total: Math.max(0, (prev[groupId]?.total ?? 1) - 1),
+        },
+      }))
       setError('העברת הקבוצה נכשלה. נסו שוב.')
       toast('העברת הקבוצה נכשלה', 'error')
     }
@@ -195,6 +372,14 @@ export default function BoardPage() {
   const archiveItem = useCallback(
     async (item) => {
       setItems((prev) => prev.filter((i) => i.id !== item.id))
+      // total -1 בלבד (תווית הכפתור); cursor/lastBatchFull ללא שינוי.
+      setGroupMeta((prev) => ({
+        ...prev,
+        [item.group_id]: {
+          ...(prev[item.group_id] || { cursor: null, lastBatchFull: false }),
+          total: Math.max(0, (prev[item.group_id]?.total ?? 1) - 1),
+        },
+      }))
       const { error } = await supabase.from('items').update({ is_archived: true }).eq('id', item.id)
       if (error) {
         toast('השבתת הפריט נכשלה', 'error')
@@ -227,6 +412,7 @@ export default function BoardPage() {
         return setError('יצירת הקבוצה נכשלה.')
       }
       setGroups((prev) => [...prev, data])
+      setGroupMeta((prev) => ({ ...prev, [data.id]: { cursor: null, total: 0, lastBatchFull: false } }))
       setGroupName('')
       setAddGroupOpen(false)
       toast('הקבוצה נוצרה בהצלחה')
@@ -247,6 +433,11 @@ export default function BoardPage() {
       if (!ok) return
       setGroups((prev) => prev.filter((g) => g.id !== group.id))
       setItems((prev) => prev.filter((i) => i.group_id !== group.id))
+      setGroupMeta((prev) => {
+        const next = { ...prev }
+        delete next[group.id]
+        return next
+      })
       const { error } = await supabase.from('groups').update({ is_archived: true }).eq('id', group.id)
       if (error) {
         toast('השבתת הקבוצה נכשלה', 'error')
@@ -347,7 +538,7 @@ export default function BoardPage() {
     }
   }
 
-  if (loading) return <LoadingSpinner label="טוען בורד..." />
+  if (metaLoading) return <LoadingSpinner label="טוען בורד..." />
 
   const minTableWidth = 220 + visibleColumns.length * 160 + 40
 
@@ -356,21 +547,49 @@ export default function BoardPage() {
   const kanbanColumn = statusColumns.find((c) => c.id === kanbanColId) || statusColumns[0]
   const personColumn = orderedColumns.find((c) => c.type === 'person')
 
-  // ייצוא הבורד (קבוצות פעילות + עמודות מוצגות) ל-CSV
-  function exportCSV() {
-    const headers = ['קבוצה', 'שם', ...visibleColumns.map((c) => c.name)]
-    const ctx = { members, clients }
-    const rows = groups.flatMap((group) =>
-      items
-        .filter((i) => i.group_id === group.id)
-        .map((item) => [
-          group.name,
-          item.name,
-          ...visibleColumns.map((col) => formatColumnValue(col, item.values?.[col.id], ctx)),
-        ])
-    )
-    const csv = exportRowsToCSV(headers, rows)
-    downloadCSV(`${board?.name || 'בורד'}-${new Date().toISOString().slice(0, 10)}.csv`, csv)
+  // ייצוא הבורד ל-CSV — חייב לכלול *את כל* פריטי הבורד (לא רק החלונות
+  // הטעונים על המסך), אז שולף בלולאה עמודי-1000 ישירות מה-DB (כמו
+  // ClientsPage.exportCSV), ולא מ-items שב-state.
+  async function exportCSV() {
+    setExporting(true)
+    try {
+      const allItems = []
+      const EXPORT_PAGE = 1000
+      let from = 0
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const to = from + EXPORT_PAGE - 1
+        const { data, error: qError, count } = await supabase
+          .from('items')
+          .select('*', { count: 'exact' })
+          .eq('board_id', boardId)
+          .eq('is_archived', false)
+          .order('position')
+          .range(from, to)
+        if (qError) throw qError
+        allItems.push(...(data || []))
+        if (!data || data.length < EXPORT_PAGE) break
+        from += EXPORT_PAGE
+        if (typeof count === 'number' && from >= count) break
+      }
+      const headers = ['קבוצה', 'שם', ...visibleColumns.map((c) => c.name)]
+      const ctx = { members, clients }
+      const rows = groups.flatMap((group) =>
+        allItems
+          .filter((i) => i.group_id === group.id)
+          .map((item) => [
+            group.name,
+            item.name,
+            ...visibleColumns.map((col) => formatColumnValue(col, item.values?.[col.id], ctx)),
+          ])
+      )
+      const csv = exportRowsToCSV(headers, rows)
+      downloadCSV(`${board?.name || 'בורד'}-${new Date().toISOString().slice(0, 10)}.csv`, csv)
+    } catch {
+      toast('ייצוא ה-CSV נכשל.', 'error')
+    } finally {
+      setExporting(false)
+    }
   }
 
   return (
@@ -415,7 +634,7 @@ export default function BoardPage() {
           )}
         </div>
         <div className="flex gap-2">
-          <Button variant="secondary" onClick={exportCSV} data-testid="board-export-btn">
+          <Button variant="secondary" onClick={exportCSV} loading={exporting} data-testid="board-export-btn">
             ⬇ ייצוא CSV
           </Button>
           {isAdmin && (
@@ -452,7 +671,12 @@ export default function BoardPage() {
             תצוגת קנבן דורשת עמודת סטטוס.{' '}
             {isAdmin ? 'הוסיפו עמודה מסוג "סטטוס" לבורד.' : 'בקשו מהמנהל להוסיף עמודת סטטוס.'}
           </div>
+        ) : itemsLoading ? (
+          <LoadingSpinner label="טוען פריטים..." />
         ) : (
+          // הערה (Item 7 v1): הקנבן מקבל רק את החלונות הטעונים (עד 100 פריטים
+          // לקבוצה) — קבוצה שחורגת מזה לא תציג את כל הכרטיסים שלה בקנבן עד
+          // שנטען "טען עוד" בתצוגת הטבלה. מתועד כמגבלת v1, לא נדרש טיפול UI.
           <BoardKanban
             column={kanbanColumn}
             personColumn={personColumn}
@@ -468,25 +692,33 @@ export default function BoardPage() {
       ) : (
         <div className="overflow-x-auto pb-2">
           <div style={{ minWidth: minTableWidth }}>
-            {groups.map((group) => (
-              <GroupSection
-                key={group.id}
-                group={group}
-                columns={visibleColumns}
-                items={items.filter((i) => i.group_id === group.id)}
-                members={members}
-                clients={clients}
-                orgId={orgId}
-                canEdit={canEdit}
-                isAdmin={isAdmin}
-                onAddItem={addItem}
-                onArchiveGroup={archiveGroup}
-                onItemName={updateItemName}
-                onItemValue={updateItemValue}
-                onArchiveItem={archiveItem}
-                onArchiveColumn={archiveColumn}
-              />
-            ))}
+            {itemsLoading
+              ? groups.map((group) => (
+                  <GroupSectionSkeleton key={group.id} group={group} columns={visibleColumns} />
+                ))
+              : groups.map((group) => (
+                  <GroupSection
+                    key={group.id}
+                    group={group}
+                    columns={visibleColumns}
+                    items={items.filter((i) => i.group_id === group.id)}
+                    members={members}
+                    clients={clients}
+                    orgId={orgId}
+                    canEdit={canEdit}
+                    isAdmin={isAdmin}
+                    total={groupMeta[group.id]?.total}
+                    lastBatchFull={groupMeta[group.id]?.lastBatchFull ?? false}
+                    loadingMore={loadingMoreGroupIds.has(group.id)}
+                    onAddItem={addItem}
+                    onArchiveGroup={archiveGroup}
+                    onItemName={updateItemName}
+                    onItemValue={updateItemValue}
+                    onArchiveItem={archiveItem}
+                    onArchiveColumn={archiveColumn}
+                    onLoadMore={loadMoreForGroup}
+                  />
+                ))}
           </div>
         </div>
       )}

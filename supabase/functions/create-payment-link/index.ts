@@ -29,7 +29,7 @@ Deno.serve(async (req) => {
     if (insErr) return json({ error: 'db insert failed' }, 500)
 
     try {
-      const appUrl = Deno.env.get('APP_BASE_URL') ?? 'https://basecrm-app.netlify.app'
+      const appUrl = Deno.env.get('APP_BASE_URL') ?? 'https://base-crm-kohl.vercel.app'
       // סוד משותף ב-URL של ה-webhook (Cardcom לא שולח headers מותאמים) — מאמת שהקריאה
       // אכן הופנתה ע"י מי שיצר את הלינק. אם הסוד לא הוגדר, לא מוסיפים פרמטר (תאימות לאחור).
       const webhookSecret = Deno.env.get('PAYMENT_WEBHOOK_SECRET')

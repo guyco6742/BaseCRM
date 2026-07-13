@@ -1,5 +1,7 @@
 import { useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { validateFile } from '../../lib/fileValidation'
+import { useToast } from '../../context/ToastContext'
 import Popover from './Popover'
 
 const BUCKET = 'attachments'
@@ -11,15 +13,39 @@ export default function FilesCell({ orgId, itemId, value, onChange, canEdit }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const inputRef = useRef(null)
+  const { toast } = useToast()
 
   async function handleUpload(e) {
     const chosen = [...e.target.files]
+    if (inputRef.current) inputRef.current.value = ''
     if (chosen.length === 0) return
+
+    const valid = []
+    const rejectedMessages = []
+    for (const file of chosen) {
+      const result = validateFile(file)
+      if (result.ok) {
+        valid.push(file)
+      } else {
+        rejectedMessages.push(result.message)
+      }
+    }
+
+    if (rejectedMessages.length > 2) {
+      toast(`${rejectedMessages.length} קבצים נדחו`, 'error')
+    } else {
+      for (const message of rejectedMessages) {
+        toast(message, 'error')
+      }
+    }
+
+    if (valid.length === 0) return
+
     setBusy(true)
     setError('')
     try {
       const added = []
-      for (const file of chosen) {
+      for (const file of valid) {
         const ext = file.name.includes('.') ? file.name.split('.').pop() : 'bin'
         const path = `${orgId}/${itemId}/${crypto.randomUUID()}.${ext}`
         const { error: upErr } = await supabase.storage.from(BUCKET).upload(path, file)
@@ -31,7 +57,6 @@ export default function FilesCell({ orgId, itemId, value, onChange, canEdit }) {
       setError('העלאת הקובץ נכשלה.')
     } finally {
       setBusy(false)
-      if (inputRef.current) inputRef.current.value = ''
     }
   }
 

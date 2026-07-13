@@ -136,6 +136,24 @@ export function mapClientRows(rows, clientFields = []) {
   return { records, unknownHeaders, skipped }
 }
 
+// תווים שאם שדה מתחיל בהם עלול Excel/Sheets לפרש אותו כנוסחה (CSV injection).
+const FORMULA_LEADING_CHARS = ['=', '+', '-', '@', '\t', '\r']
+
+// נקודת המחסום היחידה להיברחות ערכי CSV: מנטרלת הזרקת נוסחאות (OWASP prefix-apostrophe)
+// ואז מיישמת את הבריחה הקיימת למרכאות/פסיקים/שורות חדשות.
+// לא מוחקים תוכן — רק מוסיפים גרש בודד (') כך שה-ערך נשמר כמחרוזת לוגית ב-Excel.
+export function escapeCSVField(c) {
+  let s = c ?? ''
+  if (s === '') return ''
+  // בודקים רק אחרי הסרת רווחים (' ') מובילים — לא \t/\r, שהם עצמם תווי הדק
+  // כדי שערך שמתחיל ב-\t או ב-\r יזוהה ולא "יעלם" מהבדיקה
+  const leadStripped = s.replace(/^ +/, '')
+  if (FORMULA_LEADING_CHARS.some((ch) => leadStripped.startsWith(ch))) {
+    s = "'" + s
+  }
+  return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replaceAll('"', '""')}"` : s
+}
+
 // תבנית CSV להורדה (עם BOM כדי ש-Excel יציג עברית תקין).
 // כוללת עמודות בסיס + שמות השדות המותאמים של הארגון.
 export function buildClientTemplate(clientFields = []) {
@@ -143,19 +161,13 @@ export function buildClientTemplate(clientFields = []) {
   const customHeaders = clientFields.map((f) => f.name)
   const headers = [...baseHeaders, ...customHeaders]
   const example = ['ישראל ישראלי', '050-1234567', 'israel@example.com', '', 'לקוח לדוגמה', ...customHeaders.map(() => '')]
-  const csv = [headers, example]
-    .map((r) => r.map((c) => (c.includes(',') || c.includes('"') ? `"${c.replaceAll('"', '""')}"` : c)).join(','))
-    .join('\r\n')
+  const csv = [headers, example].map((r) => r.map(escapeCSVField).join(',')).join('\r\n')
   return '﻿' + csv
 }
 
 // בונה מחרוזת CSV (עם BOM) מרשימת כותרות ומטריצת שורות (מחרוזות בלבד).
 export function exportRowsToCSV(headers, rows) {
-  const escape = (c) => {
-    const s = c ?? ''
-    return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replaceAll('"', '""')}"` : s
-  }
-  const csv = [headers, ...rows].map((r) => r.map(escape).join(',')).join('\r\n')
+  const csv = [headers, ...rows].map((r) => r.map(escapeCSVField).join(',')).join('\r\n')
   return '﻿' + csv
 }
 

@@ -40,7 +40,7 @@ export default function ForgotPasswordPage() {
         <div className="w-full max-w-sm">
           <div className="mb-8 text-center">
             <h1 className="text-3xl font-bold text-text">
-              Base<span className="text-accent">CRM</span>
+              work-<span className="text-accent">it</span>
             </h1>
             <p className="mt-2 text-text-muted">ניהול משימות ולקוחות</p>
           </div>
