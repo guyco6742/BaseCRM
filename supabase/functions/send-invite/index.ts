@@ -14,11 +14,13 @@ function buildInviteUrl(token: string): string {
 async function sendInviteEmail({
   to,
   orgName,
+  orgLogoUrl,
   inviterName,
   inviteUrl,
 }: {
   to: string
   orgName: string
+  orgLogoUrl?: string | null
   inviterName: string
   inviteUrl: string
 }): Promise<boolean> {
@@ -32,25 +34,60 @@ async function sendInviteEmail({
     v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
   const orgNameHtml = esc(orgName)
   const inviterNameHtml = esc(inviterName)
+  const initials = esc(
+    inviterName
+      .trim()
+      .split(/\s+/)
+      .slice(0, 2)
+      .map((p) => p[0])
+      .join('')
+      .toUpperCase() || '·'
+  )
+  // logo_url מגיע מ-Supabase Storage (bucket ציבורי, מוזן ע"י אדמין הארגון בלבד) —
+  // עדיין עובר escaping כי הוא מוזרק ישירות לתוך attribute ב-HTML.
+  const logoUrlHtml = orgLogoUrl ? esc(orgLogoUrl) : null
+
+  const headerHtml = logoUrlHtml
+    ? `<div style="background:#ffffff; padding:20px 24px; text-align:center; border-bottom:1px solid #e5e7eb;">
+         <img src="${logoUrlHtml}" alt="${orgNameHtml}" height="40" style="max-height:40px; max-width:200px; display:inline-block;" />
+       </div>`
+    : `<div style="background:#4f46e5; padding:22px 24px; text-align:center;">
+         <div style="font-size:14px; font-weight:bold; color:#ffffff;">work-it</div>
+       </div>`
+
   const subject = `הוזמנת להצטרף ל-${orgName} ב-work-it`
   const html = `
     <div dir="rtl" lang="he" style="font-family: Arial, Helvetica, sans-serif; background:#f5f5f5; padding:24px;">
-      <div style="max-width:480px; margin:0 auto; background:#ffffff; border-radius:8px; padding:32px; color:#1f2937;">
-        <h1 style="font-size:18px; margin:0 0 16px;">הוזמנת להצטרף ל-${orgNameHtml}</h1>
-        <p style="font-size:14px; line-height:1.6; margin:0 0 24px;">
-          ${inviterNameHtml} הזמין/ה אותך להצטרף לארגון <strong>${orgNameHtml}</strong> במערכת work-it.
-        </p>
-        <div style="text-align:center; margin:0 0 24px;">
-          <a href="${inviteUrl}"
-             style="display:inline-block; background:#4f46e5; color:#ffffff; text-decoration:none;
-                    padding:12px 28px; border-radius:6px; font-size:14px; font-weight:bold;">
-            הצטרפות לארגון
-          </a>
+      <div style="max-width:480px; margin:0 auto; background:#ffffff; border-radius:8px; overflow:hidden; color:#1f2937;">
+        ${headerHtml}
+        <div style="padding:28px 24px;">
+          <div style="width:44px; height:44px; border-radius:50%; background:#eef2ff; color:#4f46e5;
+                      display:flex; align-items:center; justify-content:center; font-weight:bold;
+                      font-size:15px; margin:0 auto 16px; text-align:center; line-height:44px;">
+            ${initials}
+          </div>
+          <h1 style="font-size:17px; font-weight:bold; margin:0 0 10px; text-align:center;">הזמנה לארגון ${orgNameHtml}</h1>
+          <p style="font-size:14px; line-height:1.7; color:#4b5563; margin:0 0 22px; text-align:center;">
+            <strong style="color:#1f2937;">${inviterNameHtml}</strong> הזמין/ה אותך להצטרף כחבר/ה בארגון
+            <strong style="color:#1f2937;">${orgNameHtml}</strong> במערכת work-it.
+          </p>
+          <div style="text-align:center; margin:0 0 18px;">
+            <a href="${inviteUrl}"
+               style="display:inline-block; background:#4f46e5; color:#ffffff; text-decoration:none;
+                      padding:12px 28px; border-radius:20px; font-size:14px; font-weight:bold;">
+              קבלת ההזמנה
+            </a>
+          </div>
+          <p style="font-size:12px; color:#9ca3af; margin:0 0 4px; text-align:center;">
+            אם הכפתור לא עובד, העתיקו את הקישור לדפדפן:
+          </p>
+          <p style="font-size:12px; margin:0; text-align:center;">
+            <a href="${inviteUrl}" style="color:#4f46e5; word-break:break-all;">${inviteUrl}</a>
+          </p>
         </div>
-        <p style="font-size:12px; line-height:1.6; color:#6b7280; margin:0;">
-          אם הכפתור לא עובד, העתיקו את הקישור הבא לדפדפן:<br />
-          <a href="${inviteUrl}" style="color:#4f46e5; word-break:break-all;">${inviteUrl}</a>
-        </p>
+        <div style="background:#f9fafb; padding:12px 24px; text-align:center; border-top:1px solid #e5e7eb;">
+          <p style="font-size:10px; color:#9ca3af; margin:0;">נשלח על ידי work-it</p>
+        </div>
       </div>
     </div>
   `
@@ -103,7 +140,7 @@ Deno.serve(async (req) => {
       }
 
       const [{ data: org }, { data: inviter }] = await Promise.all([
-        svc.from('organizations').select('name').eq('id', orgId).maybeSingle(),
+        svc.from('organizations').select('name, logo_url').eq('id', orgId).maybeSingle(),
         svc.from('profiles').select('full_name, email').eq('id', auth.userId).maybeSingle(),
       ])
 
@@ -111,6 +148,7 @@ Deno.serve(async (req) => {
       const emailSent = await sendInviteEmail({
         to: email,
         orgName: org?.name ?? 'הארגון',
+        orgLogoUrl: org?.logo_url,
         inviterName: inviter?.full_name || inviter?.email || 'חבר צוות',
         inviteUrl,
       })
@@ -146,7 +184,7 @@ Deno.serve(async (req) => {
       }
 
       const [{ data: org }, { data: inviter }] = await Promise.all([
-        svc.from('organizations').select('name').eq('id', orgId).maybeSingle(),
+        svc.from('organizations').select('name, logo_url').eq('id', orgId).maybeSingle(),
         invitation.invited_by
           ? svc.from('profiles').select('full_name, email').eq('id', invitation.invited_by).maybeSingle()
           : Promise.resolve({ data: null }),
@@ -156,6 +194,7 @@ Deno.serve(async (req) => {
       const emailSent = await sendInviteEmail({
         to: invitation.email,
         orgName: org?.name ?? 'הארגון',
+        orgLogoUrl: org?.logo_url,
         inviterName: inviter?.full_name || inviter?.email || 'חבר צוות',
         inviteUrl,
       })
