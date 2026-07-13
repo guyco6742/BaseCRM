@@ -101,7 +101,7 @@ export default function AcceptInvitePage() {
       <div className="flex min-h-[calc(100vh-40px)] items-center justify-center p-4">
         <div className="w-full max-w-md rounded-lg border border-border bg-surface p-6 text-center">
           <h1 className="mb-4 text-2xl font-bold text-text">
-            Base<span className="text-accent">CRM</span>
+            work-<span className="text-accent">it</span>
           </h1>
 
           {state === 'invalid' && (
