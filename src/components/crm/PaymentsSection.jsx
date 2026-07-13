@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useToast } from '../../context/ToastContext'
 import { useConfirm } from '../../context/ConfirmContext'
+import { useOrg } from '../../context/OrgContext'
 import { PAYMENT_STATUSES, PAYMENT_METHODS, formatAmount, sumByStatus } from '../../lib/payments'
 import Button from '../ui/Button'
 import AddPaymentModal from './AddPaymentModal'
@@ -18,6 +19,7 @@ export function PaymentStatusChip({ status }) {
 export default function PaymentsSection({ orgId, clientId, clientPhone }) {
   const { toast } = useToast()
   const confirm = useConfirm()
+  const { isAdmin } = useOrg()
   const [payments, setPayments] = useState([])
   const [loading, setLoading] = useState(true)
   const [addOpen, setAddOpen] = useState(false)
@@ -74,9 +76,11 @@ export default function PaymentsSection({ orgId, clientId, clientPhone }) {
     <section className="rounded-lg border border-border bg-surface p-4" data-testid="client-payments">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="font-semibold text-text">תשלומים</h2>
-        <Button size="sm" variant="secondary" onClick={() => setAddOpen(true)} data-testid="payment-add-btn">
-          + הוסף תשלום
-        </Button>
+        {isAdmin && (
+          <Button size="sm" variant="secondary" onClick={() => setAddOpen(true)} data-testid="payment-add-btn">
+            + הוסף תשלום
+          </Button>
+        )}
       </div>
       <div className="mb-3 flex gap-4 text-sm text-text-muted" data-testid="payments-totals">
         <span>שולם: <b className="text-text">{formatAmount(totals.paid)}</b></span>
@@ -99,7 +103,7 @@ export default function PaymentsSection({ orgId, clientId, clientPhone }) {
                 <a href={p.invoice_url} target="_blank" rel="noreferrer"
                   className="text-xs text-accent hover:underline" data-testid={`payment-invoice-${p.id}`}>חשבונית</a>
               )}
-              {p.status === 'pending' && !p.provider_ref && (
+              {isAdmin && p.status === 'pending' && !p.provider_ref && (
                 <button type="button" onClick={() => markPaid(p)}
                   className="text-xs text-emerald-400 hover:underline" data-testid={`payment-markpaid-${p.id}`}>
                   סמן כשולם
@@ -118,7 +122,7 @@ export default function PaymentsSection({ orgId, clientId, clientPhone }) {
                   העתק לינק
                 </button>
               )}
-              {!(p.status === 'pending' && p.provider_ref) && (
+              {isAdmin && !(p.status === 'pending' && p.provider_ref) && (
                 <button type="button" onClick={() => archivePayment(p)}
                   className="text-xs text-text-dim hover:text-status-red" data-testid={`payment-archive-${p.id}`}>
                   ארכב
