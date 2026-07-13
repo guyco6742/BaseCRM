@@ -1,7 +1,23 @@
 import { serviceClient, json } from '../_shared/db.ts'
 import { parseWebhook, verifyTransaction } from '../_shared/cardcom.ts'
 
+// השוואת מחרוזות בזמן קבוע (מונע time-based side-channel על הסוד)
+function safeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false
+  let diff = 0
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i)
+  return diff === 0
+}
+
 Deno.serve(async (req) => {
+  // אימות סוד משותף — נאכף רק אם הוגדר PAYMENT_WEBHOOK_SECRET (תאימות לאחור).
+  // ה-endpoint ציבורי (verify_jwt=false), כך שזה חוסם קריאות שאינן מ-Cardcom.
+  const expectedSecret = Deno.env.get('PAYMENT_WEBHOOK_SECRET')
+  if (expectedSecret) {
+    const provided = new URL(req.url).searchParams.get('s') ?? ''
+    if (!safeEqual(provided, expectedSecret)) return json({ error: 'forbidden' }, 401)
+  }
+
   const svc = serviceClient()
   try {
     const { providerRef } = await parseWebhook(req)

@@ -1,4 +1,4 @@
-import { serviceClient, requireOrgMember, json, corsPreflight } from '../_shared/db.ts'
+import { serviceClient, requireOrgAdmin, json, corsPreflight } from '../_shared/db.ts'
 import { createPaymentLink } from '../_shared/cardcom.ts'
 
 Deno.serve(async (req) => {
@@ -7,7 +7,7 @@ Deno.serve(async (req) => {
     const { org_id, client_id, amount, description, max_installments } = await req.json()
     if (!org_id || !client_id || !amount || !Number.isFinite(Number(amount)) || Number(amount) <= 0) return json({ error: 'bad request' }, 400)
 
-    const auth = await requireOrgMember(req, org_id)
+    const auth = await requireOrgAdmin(req, org_id)
     if (auth instanceof Response) return auth
 
     const svc = serviceClient()
@@ -30,13 +30,18 @@ Deno.serve(async (req) => {
 
     try {
       const appUrl = Deno.env.get('APP_BASE_URL') ?? 'https://base-crm-kohl.vercel.app'
+      // סוד משותף ב-URL של ה-webhook (Cardcom לא שולח headers מותאמים) — מאמת שהקריאה
+      // אכן הופנתה ע"י מי שיצר את הלינק. אם הסוד לא הוגדר, לא מוסיפים פרמטר (תאימות לאחור).
+      const webhookSecret = Deno.env.get('PAYMENT_WEBHOOK_SECRET')
+      const webhookUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/payment-webhook`
+        + (webhookSecret ? `?s=${encodeURIComponent(webhookSecret)}` : '')
       const { url, providerRef } = await createPaymentLink(account.credentials, {
         amount: Number(amount), description: description ?? 'תשלום',
         clientName: client.name, clientEmail: client.email ?? undefined,
         maxInstallments: max_installments ? Number(max_installments) : undefined,
         autoInvoice: account.settings?.auto_invoice !== false,
         successUrl: `${appUrl}/pay/thanks`, failedUrl: `${appUrl}/pay/thanks?failed=1`,
-        webhookUrl: `${Deno.env.get('SUPABASE_URL')}/functions/v1/payment-webhook`,
+        webhookUrl,
         paymentId: payment.id,
       })
       await svc.from('payments').update({ payment_link: url, provider_ref: providerRef }).eq('id', payment.id)

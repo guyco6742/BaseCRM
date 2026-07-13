@@ -13,20 +13,23 @@ export default function PaymentProviderManager({ orgId }) {
   const [terminal, setTerminal] = useState('')
   const [apiName, setApiName] = useState('')
   const [apiPassword, setApiPassword] = useState('')
+  const [hasPassword, setHasPassword] = useState(false)
   const [autoInvoice, setAutoInvoice] = useState(true)
   const [saving, setSaving] = useState(false)
   const [testing, setTesting] = useState(false)
   const [testUrl, setTestUrl] = useState('')
 
   async function load() {
-    const { data } = await supabase.from('payment_provider_accounts')
+    // קוראים מה-view הבטוח — הסיסמה המוצפנת לעולם לא מוחזרת לדפדפן, רק דגל has_password
+    const { data } = await supabase.from('payment_provider_accounts_safe')
       .select('*').eq('org_id', orgId).eq('is_archived', false)
       .eq('provider', 'cardcom').limit(1).maybeSingle()
     if (data) {
       setAccount(data)
       setTerminal(data.credentials?.terminal_number ?? '')
       setApiName(data.credentials?.api_name ?? '')
-      setApiPassword(data.credentials?.api_password ?? '')
+      setHasPassword(!!data.has_password)
+      setApiPassword('') // כתיבה-בלבד: לא ממלאים את שדה הסיסמה בערך קיים
       setAutoInvoice(data.settings?.auto_invoice !== false)
     }
     setLoading(false)
@@ -37,18 +40,18 @@ export default function PaymentProviderManager({ orgId }) {
   async function save(e) {
     e.preventDefault()
     setSaving(true)
-    const payload = {
-      org_id: orgId, provider: 'cardcom', display_name: 'Cardcom',
-      credentials: { terminal_number: terminal.trim(), api_name: apiName.trim(), api_password: apiPassword.trim() },
-      settings: { auto_invoice: autoInvoice, document_type: 'invoice_receipt', language: 'he' },
-    }
-    const q = account
-      ? supabase.from('payment_provider_accounts').update(payload).eq('id', account.id)
-      : supabase.from('payment_provider_accounts').insert(payload)
-    const { error } = await q
+    // כתיבה דרך RPC לאדמינים בלבד; הסיסמה מוצפנת בצד-שרת. שדה ריק = שמירת הסיסמה הקיימת.
+    const { error } = await supabase.rpc('save_payment_provider', {
+      p_org_id: orgId,
+      p_terminal: terminal.trim(),
+      p_api_name: apiName.trim(),
+      p_api_password: apiPassword,
+      p_auto_invoice: autoInvoice,
+    })
     setSaving(false)
     if (error) { toast('שמירת החיבור נכשלה.', 'error'); return }
     toast('חיבור הסליקה נשמר')
+    setApiPassword('')
     await load()
   }
 
@@ -104,7 +107,9 @@ export default function PaymentProviderManager({ orgId }) {
       <form onSubmit={save} onKeyDown={handleEnterAsTab} className="space-y-3">
         <Input label="מספר טרמינל" value={terminal} onChange={(e) => setTerminal(e.target.value)} dir="ltr" data-testid="provider-terminal-input" required />
         <Input label="API Name" value={apiName} onChange={(e) => setApiName(e.target.value)} dir="ltr" data-testid="provider-apiname-input" required />
-        <Input label="API Password" type="password" value={apiPassword} onChange={(e) => setApiPassword(e.target.value)} dir="ltr" data-testid="provider-apipassword-input" />
+        <Input label="API Password" type="password" value={apiPassword} onChange={(e) => setApiPassword(e.target.value)} dir="ltr"
+          placeholder={hasPassword ? '•••••• — שמורה. השאירו ריק כדי לא לשנות' : ''}
+          autoComplete="new-password" data-testid="provider-apipassword-input" />
         <label className="flex items-center gap-2 text-sm text-text">
           <input type="checkbox" checked={autoInvoice} onChange={(e) => setAutoInvoice(e.target.checked)} data-testid="provider-autoinvoice-checkbox" />
           הפקת חשבונית מס/קבלה אוטומטית בכל תשלום
