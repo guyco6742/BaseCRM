@@ -1,7 +1,7 @@
 // src/lib/payments.test.js
 import { describe, it, expect } from 'vitest'
 import {
-  PAYMENT_STATUSES, PAYMENT_METHODS, formatAmount,
+  PAYMENT_STATUSES, PAYMENT_METHODS, PAYMENT_PROVIDERS, formatAmount,
   sumByStatus, filterPayments, paymentToCSVRow, PAYMENT_CSV_HEADERS,
 } from './payments'
 
@@ -65,5 +65,11 @@ describe('payments lib', () => {
     expect(row.length).toBe(PAYMENT_CSV_HEADERS.length)
     expect(row).toContain('משפחת כהן')
     expect(row.join(',')).toMatch(/שולם/)
+  })
+
+  it('has labels for every provider', () => {
+    for (const pr of ['cardcom', 'grow']) {
+      expect(PAYMENT_PROVIDERS[pr].label).toBeTruthy()
+    }
   })
 })

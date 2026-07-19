@@ -17,6 +17,11 @@ export const PAYMENT_METHODS = {
   other:         { label: 'אחר' },
 }
 
+export const PAYMENT_PROVIDERS = {
+  cardcom: { label: 'Cardcom' },
+  grow:    { label: 'Grow' },
+}
+
 export function formatAmount(amount, currency = 'ILS') {
   return new Intl.NumberFormat('he-IL', { style: 'currency', currency, minimumFractionDigits: 2 }).format(Number(amount) || 0)
 }
