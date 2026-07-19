@@ -26,11 +26,13 @@ async function runConnectionTest(orgId, provider, toast, setTestUrl) {
 }
 
 function ActiveToggle({ account, onToggled, testid }) {
+  const { toast } = useToast()
   if (!account) return null
   async function toggle() {
     const { error } = await supabase.from('payment_provider_accounts')
       .update({ is_active: !account.is_active }).eq('id', account.id)
-    if (!error) onToggled()
+    if (error) { toast('העדכון נכשל.', 'error'); return }
+    onToggled()
   }
   return (
     <button type="button" onClick={toggle}
