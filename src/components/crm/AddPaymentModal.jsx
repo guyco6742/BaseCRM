@@ -1,8 +1,8 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { useToast } from '../../context/ToastContext'
-import { PAYMENT_METHODS } from '../../lib/payments'
+import { PAYMENT_METHODS, PAYMENT_PROVIDERS } from '../../lib/payments'
 import Button from '../ui/Button'
 import Modal from '../ui/Modal'
 import Input from '../ui/Input'
@@ -22,6 +22,19 @@ export default function AddPaymentModal({ open, onClose, orgId, clientId, client
   const [error, setError] = useState('')
   const [maxInstallments, setMaxInstallments] = useState(1)
   const [createdLink, setCreatedLink] = useState('')
+  const [providers, setProviders] = useState([])   // ספקים פעילים של הארגון
+  const [provider, setProvider] = useState('')
+
+  useEffect(() => {
+    if (!open) return
+    supabase.from('payment_provider_accounts_safe')
+      .select('provider').eq('org_id', orgId).eq('is_archived', false).eq('is_active', true)
+      .then(({ data }) => {
+        const list = (data ?? []).map((a) => a.provider)
+        setProviders(list)
+        setProvider(list.includes('cardcom') ? 'cardcom' : (list[0] ?? ''))
+      })
+  }, [open, orgId])
 
   function handleClose() {
     setCreatedLink('')
@@ -35,12 +48,19 @@ export default function AddPaymentModal({ open, onClose, orgId, clientId, client
     if (!amt || amt <= 0) { setError('יש להזין סכום חיובי.'); return }
     setSaving(true); setError('')
     const { data, error: err } = await supabase.functions.invoke('create-payment-link', {
-      body: { org_id: orgId, client_id: clientId, amount: amt, description: description.trim(), max_installments: Number(maxInstallments) || 1 },
+      body: {
+        org_id: orgId, client_id: clientId, amount: amt, description: description.trim(),
+        max_installments: Number(maxInstallments) || 1,
+        ...(providers.length > 1 ? { provider } : {}),
+      },
     })
     setSaving(false)
     if (err || data?.error) {
-      setError(data?.error === 'no active provider'
-        ? 'אין חשבון סליקה פעיל — חברו Cardcom בהגדרות הארגון.'
+      const code = data?.error
+      setError(
+        code === 'no active provider' ? 'אין חשבון סליקה פעיל — חברו ספק בהגדרות הארגון.'
+        : code === 'client_phone_required' ? 'ללקוח אין מספר טלפון נייד תקין — נדרש עבור סליקה ב-Grow. עדכנו את כרטיס הלקוח.'
+        : code === 'provider_required' ? 'יש לבחור ספק סליקה.'
         : 'יצירת הקישור נכשלה.')
       return
     }
@@ -115,6 +135,18 @@ export default function AddPaymentModal({ open, onClose, orgId, clientId, client
             onChange={(e) => setAmount(e.target.value)} data-testid="payment-amount-input" required />
           <Input label="תיאור" value={description} onChange={(e) => setDescription(e.target.value)}
             placeholder="למשל: חוג ג׳ודו — יולי" data-testid="payment-description-input" />
+          {providers.length > 1 && (
+            <label className="block">
+              <span className="mb-1 block text-sm text-text-muted">ספק סליקה</span>
+              <select value={provider} onChange={(e) => setProvider(e.target.value)}
+                className="w-full rounded-md border border-border bg-bg px-3 py-2 text-text outline-none focus:border-accent"
+                data-testid="payment-provider-select">
+                {providers.map((pr) => (
+                  <option key={pr} value={pr}>{PAYMENT_PROVIDERS[pr]?.label || pr}</option>
+                ))}
+              </select>
+            </label>
+          )}
           <label className="block">
             <span className="mb-1 block text-sm text-text-muted">מספר תשלומים מקסימלי</span>
             <select value={maxInstallments} onChange={(e) => setMaxInstallments(e.target.value)}
