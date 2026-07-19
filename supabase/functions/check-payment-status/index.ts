@@ -1,5 +1,6 @@
 import { serviceClient, requireOrgMember, json, corsPreflight } from '../_shared/db.ts'
-import { verifyTransaction } from '../_shared/cardcom.ts'
+import * as cardcom from '../_shared/cardcom.ts'
+import * as grow from '../_shared/grow.ts'
 
 Deno.serve(async (req) => {
   const pre = corsPreflight(req); if (pre) return pre
@@ -16,10 +17,12 @@ Deno.serve(async (req) => {
     if (payment.status !== 'pending') return json({ status: payment.status })
 
     const { data: account } = await svc.from('payment_provider_accounts')
-      .select('credentials').eq('id', payment.provider_account_id).maybeSingle()
+      .select('provider, credentials').eq('id', payment.provider_account_id).maybeSingle()
     if (!account) return json({ error: 'no provider' }, 400)
 
-    const result = await verifyTransaction(account.credentials, payment.provider_ref)
+    const result = account.provider === 'grow'
+      ? await grow.verifyTransaction(account.credentials, payment.provider_ref, payment.provider_meta)
+      : await cardcom.verifyTransaction(account.credentials, payment.provider_ref)
     if (result.status !== 'pending') {
       await svc.from('payments').update({
         status: result.status,
