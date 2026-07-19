@@ -58,3 +58,74 @@ export function mapProcessInfo(data: unknown): { status: 'paid' | 'pending'; tra
   const tc = d.transactionCode ? String(d.transactionCode) : undefined
   return { status: tc ? 'paid' : 'pending', transactionCode: tc }
 }
+
+export interface VerifyResult {
+  status: 'paid' | 'failed' | 'pending'
+  paidAt?: string; invoiceUrl?: string; invoiceNumber?: string; raw: unknown
+}
+
+function toFormData(fields: Record<string, string>): FormData {
+  const fd = new FormData()
+  for (const [k, v] of Object.entries(fields)) fd.append(k, v)
+  return fd
+}
+
+async function growPost(creds: GrowCreds, path: string, fields: Record<string, string>): Promise<Record<string, unknown>> {
+  const res = await fetch(`${growBaseUrl(creds)}/${path}`, { method: 'POST', body: toFormData(fields) })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok || (data as Record<string, unknown>).status !== 1) {
+    throw new Error(`grow ${path} failed: http ${res.status} ${JSON.stringify((data as Record<string, unknown>).err ?? data)}`)
+  }
+  return data as Record<string, unknown>
+}
+
+export async function createPaymentLink(creds: GrowCreds, p: GrowCreateParams):
+  Promise<{ url: string; providerRef: string; providerMeta: { process_token: string } }> {
+  const data = await growPost(creds, 'createPaymentProcess', buildCreateProcessForm(creds, p))
+  const d = (data.data ?? {}) as Record<string, unknown>
+  if (!d.url || !d.processId || !d.processToken) throw new Error('grow createPaymentProcess: missing url/processId/processToken')
+  return { url: String(d.url), providerRef: String(d.processId), providerMeta: { process_token: String(d.processToken) } }
+}
+
+export async function verifyTransaction(creds: GrowCreds, providerRef: string,
+  providerMeta: { process_token?: string } | null): Promise<VerifyResult> {
+  if (!providerMeta?.process_token) return { status: 'pending', raw: { error: 'missing process_token' } }
+  const data = await growPost(creds, 'getPaymentProcessInfo', {
+    pageCode: creds.page_code, processId: providerRef, processToken: providerMeta.process_token,
+  })
+  const mapped = mapProcessInfo(data.data)
+  return {
+    status: mapped.status,
+    paidAt: mapped.status === 'paid' ? new Date().toISOString() : undefined,
+    // חשבוניות מונפקות בצד Grow (ראו spec §8) — אין שדות מסמך ב-flow הזה כרגע
+    raw: data,
+  }
+}
+
+// ה-notify של Grow — form-encoded. cField1 = מזהה התשלום שלנו; processId = provider_ref.
+export async function parseWebhook(req: Request):
+  Promise<{ paymentId: string | null; providerRef: string | null; notifyBody: Record<string, string> }> {
+  try {
+    const body: Record<string, string> = {}
+    const ct = req.headers.get('content-type') ?? ''
+    if (ct.includes('application/json')) {
+      const data = await req.json()
+      for (const [k, v] of Object.entries(data ?? {})) body[k] = String(v)
+    } else {
+      const form = await req.formData()
+      for (const [k, v] of form.entries()) body[k] = String(v)
+    }
+    return { paymentId: body.cField1 ?? null, providerRef: body.processId ?? null, notifyBody: body }
+  } catch {
+    return { paymentId: null, providerRef: null, notifyBody: {} }
+  }
+}
+
+// אישור קבלת העדכון — חובה, אחרת Grow שולחים שוב עד 5 פעמים. כישלון נרשם ולא מפיל את ה-webhook.
+export async function approveTransaction(creds: GrowCreds, notifyBody: Record<string, string>): Promise<void> {
+  try {
+    await growPost(creds, 'approveTransaction', { ...notifyBody, pageCode: creds.page_code })
+  } catch (e) {
+    console.error(`grow approveTransaction failed (processId=${notifyBody.processId ?? '?'})`, e)
+  }
+}
