@@ -1,108 +1,85 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useToast } from '../../context/ToastContext'
 import Button from '../ui/Button'
 import Input from '../ui/Input'
 import { handleEnterAsTab } from '../../lib/formNav'
 
-// חיבור חשבון סליקה (Cardcom) — אדמינים בלבד, מוצג בהגדרות הארגון
-export default function PaymentProviderManager({ orgId }) {
+// חיבור חשבונות סליקה (Cardcom + Grow) — אדמינים בלבד, מוצג בהגדרות הארגון
+
+// בדיקת חיבור משותפת: יוצרים לינק אמיתי על ₪1 ומארכבים מיד
+async function runConnectionTest(orgId, provider, toast, setTestUrl) {
+  const { data: client } = await supabase.from('clients')
+    .select('id').eq('org_id', orgId).eq('is_archived', false).limit(1).maybeSingle()
+  if (!client) { toast('נדרש לפחות לקוח אחד בארגון לבדיקה.', 'error'); return }
+  const { data, error } = await supabase.functions.invoke('create-payment-link', {
+    body: { org_id: orgId, client_id: client.id, amount: 1, description: 'בדיקת חיבור — נא לא לשלם', provider },
+  })
+  if (error || data?.error) throw new Error(data?.error || error.message)
+  setTestUrl(data.url)
+  const { error: archiveError } = await supabase.from('payments').update({ is_archived: true }).eq('id', data.payment_id)
+  if (archiveError) {
+    toast('החיבור תקין, אך ניקוי תשלום הבדיקה נכשל — ארכבו אותו ידנית מדף התשלומים.', 'error')
+  } else {
+    toast('החיבור תקין ✓')
+  }
+}
+
+function ActiveToggle({ account, onToggled, testid }) {
+  if (!account) return null
+  async function toggle() {
+    const { error } = await supabase.from('payment_provider_accounts')
+      .update({ is_active: !account.is_active }).eq('id', account.id)
+    if (!error) onToggled()
+  }
+  return (
+    <button type="button" onClick={toggle}
+      className={`rounded-full border px-2 py-0.5 text-xs ${account.is_active ? 'border-emerald-500/30 text-emerald-400' : 'border-border text-text-dim'}`}
+      data-testid={testid}>
+      {account.is_active ? 'פעיל' : 'כבוי'}
+    </button>
+  )
+}
+
+function CardcomCard({ orgId, account, reload }) {
   const { toast } = useToast()
-  const [account, setAccount] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [terminal, setTerminal] = useState('')
-  const [apiName, setApiName] = useState('')
+  const [terminal, setTerminal] = useState(account?.credentials?.terminal_number ?? '')
+  const [apiName, setApiName] = useState(account?.credentials?.api_name ?? '')
   const [apiPassword, setApiPassword] = useState('')
-  const [hasPassword, setHasPassword] = useState(false)
-  const [autoInvoice, setAutoInvoice] = useState(true)
+  const [autoInvoice, setAutoInvoice] = useState(account?.settings?.auto_invoice !== false)
   const [saving, setSaving] = useState(false)
   const [testing, setTesting] = useState(false)
   const [testUrl, setTestUrl] = useState('')
-
-  async function load() {
-    // קוראים מה-view הבטוח — הסיסמה המוצפנת לעולם לא מוחזרת לדפדפן, רק דגל has_password
-    const { data } = await supabase.from('payment_provider_accounts_safe')
-      .select('*').eq('org_id', orgId).eq('is_archived', false)
-      .eq('provider', 'cardcom').limit(1).maybeSingle()
-    if (data) {
-      setAccount(data)
-      setTerminal(data.credentials?.terminal_number ?? '')
-      setApiName(data.credentials?.api_name ?? '')
-      setHasPassword(!!data.has_password)
-      setApiPassword('') // כתיבה-בלבד: לא ממלאים את שדה הסיסמה בערך קיים
-      setAutoInvoice(data.settings?.auto_invoice !== false)
-    }
-    setLoading(false)
-  }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { load() }, [orgId])
+  const hasPassword = !!account?.has_password
 
   async function save(e) {
     e.preventDefault()
     setSaving(true)
-    // כתיבה דרך RPC לאדמינים בלבד; הסיסמה מוצפנת בצד-שרת. שדה ריק = שמירת הסיסמה הקיימת.
-    const { error } = await supabase.rpc('save_payment_provider', {
-      p_org_id: orgId,
-      p_terminal: terminal.trim(),
-      p_api_name: apiName.trim(),
-      p_api_password: apiPassword,
-      p_auto_invoice: autoInvoice,
+    const { error } = await supabase.rpc('save_payment_provider_v2', {
+      p_org_id: orgId, p_provider: 'cardcom',
+      p_credentials: { terminal_number: terminal.trim(), api_name: apiName.trim() },
+      p_secret: apiPassword || null,
+      p_settings: { auto_invoice: autoInvoice, document_type: 'invoice_receipt', language: 'he' },
     })
     setSaving(false)
     if (error) { toast('שמירת החיבור נכשלה.', 'error'); return }
     toast('חיבור הסליקה נשמר')
     setApiPassword('')
-    await load()
+    reload()
   }
 
-  async function toggleActive() {
-    if (!account) return
-    const { error } = await supabase.from('payment_provider_accounts')
-      .update({ is_active: !account.is_active }).eq('id', account.id)
-    if (error) { toast('העדכון נכשל.', 'error'); return }
-    await load()
+  async function test() {
+    setTesting(true); setTestUrl('')
+    try { await runConnectionTest(orgId, 'cardcom', toast, setTestUrl) }
+    catch { toast('בדיקת החיבור נכשלה — בדקו את פרטי ה-API.', 'error') }
+    finally { setTesting(false) }
   }
-
-  // בדיקת חיבור: יוצרים לינק אמיתי על ₪1 ללקוח לא-קיים? לא — צריך לקוח. משתמשים בלקוח הראשון בארגון.
-  async function testConnection() {
-    setTesting(true)
-    setTestUrl('')
-    try {
-      const { data: client } = await supabase.from('clients')
-        .select('id').eq('org_id', orgId).eq('is_archived', false).limit(1).maybeSingle()
-      if (!client) { toast('נדרש לפחות לקוח אחד בארגון לבדיקה.', 'error'); return }
-      const { data, error } = await supabase.functions.invoke('create-payment-link', {
-        body: { org_id: orgId, client_id: client.id, amount: 1, description: 'בדיקת חיבור — נא לא לשלם' },
-      })
-      if (error || data?.error) throw new Error(data?.error || error.message)
-      setTestUrl(data.url)
-      // מארכבים את תשלום-הבדיקה מיד כדי שלא יזהם את היומן
-      const { error: archiveError } = await supabase.from('payments').update({ is_archived: true }).eq('id', data.payment_id)
-      if (archiveError) {
-        toast('החיבור תקין, אך ניקוי תשלום הבדיקה נכשל — ארכבו אותו ידנית מדף התשלומים.', 'error')
-      } else {
-        toast('החיבור תקין ✓')
-      }
-    } catch {
-      toast('בדיקת החיבור נכשלה — בדקו את פרטי ה-API.', 'error')
-    } finally {
-      setTesting(false)
-    }
-  }
-
-  if (loading) return null
 
   return (
     <section className="rounded-lg border border-border bg-surface p-4" data-testid="payment-provider-manager">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="font-semibold text-text">תשלומים וסליקה (Cardcom)</h2>
-        {account && (
-          <button type="button" onClick={toggleActive}
-            className={`rounded-full border px-2 py-0.5 text-xs ${account.is_active ? 'border-emerald-500/30 text-emerald-400' : 'border-border text-text-dim'}`}
-            data-testid="provider-active-toggle">
-            {account.is_active ? 'פעיל' : 'כבוי'}
-          </button>
-        )}
+        <ActiveToggle account={account} onToggled={reload} testid="provider-active-toggle" />
       </div>
       <form onSubmit={save} onKeyDown={handleEnterAsTab} className="space-y-3">
         <Input label="מספר טרמינל" value={terminal} onChange={(e) => setTerminal(e.target.value)} dir="ltr" data-testid="provider-terminal-input" required />
@@ -117,9 +94,7 @@ export default function PaymentProviderManager({ orgId }) {
         <div className="flex gap-2">
           <Button type="submit" loading={saving} data-testid="provider-save-btn">שמירה</Button>
           {account && (
-            <Button type="button" variant="secondary" loading={testing} onClick={testConnection} data-testid="provider-test-btn">
-              בדוק חיבור
-            </Button>
+            <Button type="button" variant="secondary" loading={testing} onClick={test} data-testid="provider-test-btn">בדוק חיבור</Button>
           )}
         </div>
         {testUrl && (
@@ -129,5 +104,90 @@ export default function PaymentProviderManager({ orgId }) {
         )}
       </form>
     </section>
+  )
+}
+
+function GrowCard({ orgId, account, reload }) {
+  const { toast } = useToast()
+  const [userId, setUserId] = useState(account?.credentials?.user_id ?? '')
+  const [pageCode, setPageCode] = useState(account?.credentials?.page_code ?? '')
+  const [sandbox, setSandbox] = useState(account?.credentials?.sandbox !== false)
+  const [saving, setSaving] = useState(false)
+  const [testing, setTesting] = useState(false)
+  const [testUrl, setTestUrl] = useState('')
+
+  async function save(e) {
+    e.preventDefault()
+    setSaving(true)
+    const { error } = await supabase.rpc('save_payment_provider_v2', {
+      p_org_id: orgId, p_provider: 'grow',
+      p_credentials: { user_id: userId.trim(), page_code: pageCode.trim(), sandbox },
+      p_secret: null, p_settings: {},
+    })
+    setSaving(false)
+    if (error) { toast('שמירת החיבור נכשלה.', 'error'); return }
+    toast('חיבור הסליקה נשמר')
+    reload()
+  }
+
+  async function test() {
+    setTesting(true); setTestUrl('')
+    try { await runConnectionTest(orgId, 'grow', toast, setTestUrl) }
+    catch (e) {
+      toast(e?.message === 'client_phone_required'
+        ? 'ללקוח הבדיקה אין טלפון נייד תקין — נדרש עבור Grow.'
+        : 'בדיקת החיבור נכשלה — בדקו את פרטי החיבור.', 'error')
+    }
+    finally { setTesting(false) }
+  }
+
+  return (
+    <section className="rounded-lg border border-border bg-surface p-4" data-testid="payment-provider-grow">
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="font-semibold text-text">תשלומים וסליקה (Grow)</h2>
+        <ActiveToggle account={account} onToggled={reload} testid="provider-grow-active-toggle" />
+      </div>
+      <form onSubmit={save} onKeyDown={handleEnterAsTab} className="space-y-3">
+        <Input label="User ID" value={userId} onChange={(e) => setUserId(e.target.value)} dir="ltr" data-testid="provider-grow-userid-input" required />
+        <Input label="Page Code" value={pageCode} onChange={(e) => setPageCode(e.target.value)} dir="ltr" data-testid="provider-grow-pagecode-input" required />
+        <label className="flex items-center gap-2 text-sm text-text">
+          <input type="checkbox" checked={sandbox} onChange={(e) => setSandbox(e.target.checked)} data-testid="provider-grow-sandbox-checkbox" />
+          סביבת בדיקות (Sandbox)
+        </label>
+        <p className="text-xs text-text-muted">חשבוניות מונפקות דרך מודול החשבוניות של Grow (מוגדר בחשבון Grow שלכם), לא דרך המערכת.</p>
+        <div className="flex gap-2">
+          <Button type="submit" loading={saving} data-testid="provider-grow-save-btn">שמירה</Button>
+          {account && (
+            <Button type="button" variant="secondary" loading={testing} onClick={test} data-testid="provider-grow-test-btn">בדוק חיבור</Button>
+          )}
+        </div>
+        {testUrl && (
+          <p className="text-xs text-text-muted" data-testid="provider-grow-test-url">
+            נוצר לינק בדיקה בהצלחה: <a className="text-accent hover:underline" href={testUrl} target="_blank" rel="noreferrer">צפייה (אין לשלם)</a>
+          </p>
+        )}
+      </form>
+    </section>
+  )
+}
+
+export default function PaymentProviderManager({ orgId }) {
+  const [accounts, setAccounts] = useState(null) // null = טוען
+
+  const load = useCallback(async () => {
+    const { data } = await supabase.from('payment_provider_accounts_safe')
+      .select('*').eq('org_id', orgId).eq('is_archived', false)
+    setAccounts(data ?? [])
+  }, [orgId])
+  useEffect(() => { load() }, [load])
+
+  if (accounts === null) return null
+  const byProvider = Object.fromEntries(accounts.map((a) => [a.provider, a]))
+  return (
+    <div className="space-y-4">
+      {/* key מאלץ רימאונט אחרי טעינה-מחדש כדי לרענן ערכים התחלתיים מהשרת */}
+      <CardcomCard key={`cc-${byProvider.cardcom?.id ?? 'new'}`} orgId={orgId} account={byProvider.cardcom} reload={load} />
+      <GrowCard key={`gr-${byProvider.grow?.id ?? 'new'}`} orgId={orgId} account={byProvider.grow} reload={load} />
+    </div>
   )
 }
