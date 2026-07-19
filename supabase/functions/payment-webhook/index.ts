@@ -43,8 +43,9 @@ Deno.serve(async (req) => {
       if (!payment) return json({ ok: true })
 
       const { data: account } = await svc.from('payment_provider_accounts')
-        .select('credentials').eq('id', payment.provider_account_id).maybeSingle()
-      if (!account) return json({ ok: true })
+        .select('provider, credentials').eq('id', payment.provider_account_id).maybeSingle()
+      // הגנה: notify של Grow חייב להצביע על תשלום ששייך לחשבון Grow
+      if (!account || account.provider !== 'grow') return json({ ok: true })
 
       if (payment.status !== 'paid') {
         // לעולם לא סומכים על גוף ה-notify — מאמתים מול Grow
