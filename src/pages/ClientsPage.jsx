@@ -141,26 +141,34 @@ export default function ClientsPage() {
   const [exporting, setExporting] = useState(false)
 
   // ---- טעינת מטא-דאטה: סטטוסים + שדות מותאמים ----
-  async function loadMeta() {
+  // isActive() מאפשר למאמת-הזמן שביצע קריאה (מ-useEffect keyed על orgId) לבטל
+  // עדכון-state מתשובה מאוחרת של ארגון ישן. ברירת המחדל (תמיד פעיל) משמשת את
+  // קוראי-המוטציה (addField/updateField/…) שאין להם race על orgId.
+  async function loadMeta(isActive = () => true) {
     setMetaLoading(true)
     try {
       const [sRes, fRes] = await Promise.all([
         supabase.from('client_statuses').select('*').eq('org_id', orgId).order('position'),
         supabase.from('client_fields').select('*').eq('org_id', orgId).order('position'),
       ])
+      if (!isActive()) return
       if (sRes.error) throw sRes.error
       if (fRes.error) throw fRes.error
       setStatuses((sRes.data || []).filter((s) => !s.is_archived))
       setFields(fRes.data || [])
     } catch {
-      setError('טעינת הלקוחות נכשלה.')
+      if (isActive()) setError('טעינת הלקוחות נכשלה.')
     } finally {
-      setMetaLoading(false)
+      if (isActive()) setMetaLoading(false)
     }
   }
 
   useEffect(() => {
-    loadMeta()
+    let active = true
+    loadMeta(() => active)
+    return () => {
+      active = false
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orgId])
 
@@ -303,7 +311,7 @@ export default function ClientsPage() {
 
   // ---- לקוחות מושבתים (מנהל בלבד) — רשימה נפרדת, לא מעומדת (בד"כ קטנה) ----
   const [archivedClients, setArchivedClients] = useState([])
-  async function loadArchived() {
+  async function loadArchived(isActive = () => true) {
     if (!isAdmin || !orgId) return
     const { data } = await supabase
       .from('clients')
@@ -312,41 +320,47 @@ export default function ClientsPage() {
       .eq('is_archived', true)
       .order('name')
       .limit(500)
+    if (!isActive()) return
     setArchivedClients(data || [])
   }
   useEffect(() => {
-    loadArchived()
+    let active = true
+    loadArchived(() => active)
+    return () => {
+      active = false
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orgId, isAdmin])
 
   // ---- ספירות לצ'יפים של סינון-שלב ----
-  // שאילתה קלה אחת (עמודת status_id בלבד, לא כל השורה) — לא כרוכה ב-N+1
-  // ולא סוחבת contacts(count)/custom_values הכבדים; מספיק להצגת מונים.
+  // אגרגציה בצד שרת (RPC get_client_status_counts) — מחזירה שורות
+  // { status_id, count }, ומחליפה גם את שאילתת status_id המלאה וגם את
+  // ה-head-count הנפרד. total ו-grandTotal נגזרים מסכום כל ה-count.
   const [statusCounts, setStatusCounts] = useState({ total: 0, byStatus: {}, grandTotal: 0 })
-  async function loadStatusCounts() {
+  async function loadStatusCounts(isActive = () => true) {
     if (!orgId) return
-    const { data } = await supabase
-      .from('clients')
-      .select('status_id')
-      .eq('org_id', orgId)
-      .eq('is_archived', false)
+    const { data, error: rpcError } = await supabase.rpc('get_client_status_counts', { p_org_id: orgId })
+    if (!isActive()) return
+    if (rpcError) {
+      // כשל ה-RPC — לא מפילים את העמוד; מציגים מונים אפסיים (fail-graceful).
+      setStatusCounts({ total: 0, byStatus: {}, grandTotal: 0 })
+      return
+    }
     const byStatus = {}
     let total = 0
-    for (const c of data || []) {
-      total++
-      if (c.status_id) byStatus[c.status_id] = (byStatus[c.status_id] || 0) + 1
+    for (const row of data || []) {
+      const c = Number(row.count) || 0
+      total += c
+      if (row.status_id) byStatus[row.status_id] = c
     }
-    // grandTotal כולל גם לקוחות מושבתים — כדי לתאום עם בסיס המיקום (position)
-    // שמשמש ביצירת לקוח (handleCreate סופר את כל הלקוחות, כולל מושבתים), כך
-    // שהייבוא מה-CSV יוסיף אחרי אותו בסיס בדיוק ולא ידרוס position קיים.
-    const { count: grandTotal } = await supabase
-      .from('clients')
-      .select('id', { count: 'exact', head: true })
-      .eq('org_id', orgId)
-    setStatusCounts({ total, byStatus, grandTotal: grandTotal ?? total })
+    setStatusCounts({ total, byStatus, grandTotal: total })
   }
   useEffect(() => {
-    loadStatusCounts()
+    let active = true
+    loadStatusCounts(() => active)
+    return () => {
+      active = false
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orgId])
 
@@ -360,19 +374,29 @@ export default function ClientsPage() {
   }
 
   // עמוד הרשימה המוצג בפועל: מיון-עמוד-מקומי (אם צריך) → סינוני-עמודה (עמוד-מקומי)
-  const pageRows = sortIsPageLocal ? sortClients(localRows, sort, ctx) : localRows
-  const pageFilteredRows = filters.length ? pageRows.filter((c) => matchesFilters(c, filters, ctx)) : pageRows
+  const pageRows = useMemo(
+    () => (sortIsPageLocal ? sortClients(localRows, sort, ctx) : localRows),
+    [sortIsPageLocal, localRows, sort, ctx]
+  )
+  const pageFilteredRows = useMemo(
+    () => (filters.length ? pageRows.filter((c) => matchesFilters(c, filters, ctx)) : pageRows),
+    [filters, pageRows, ctx]
+  )
 
   // תצוגת קנבן: כל הלקוחות, סינון+מיון מלאים בצד לקוח (כמו לפני Item 7) —
   // בלי debounce על החיפוש כי אין כאן פנייה לרשת, זו סינון-מערך רגיל.
-  const kanbanFiltered = kanbanClients.filter((c) => {
-    if (statusFilter && c.status_id !== statusFilter) return false
-    if (!matchesFilters(c, filters, ctx)) return false
-    const q = search.trim().toLowerCase()
-    if (!q) return true
-    return [c.name, c.phone, c.email, c.company_number].filter(Boolean).some((v) => v.toLowerCase().includes(q))
-  })
-  const kanbanSorted = sortClients(kanbanFiltered, sort, ctx)
+  const kanbanFiltered = useMemo(
+    () =>
+      kanbanClients.filter((c) => {
+        if (statusFilter && c.status_id !== statusFilter) return false
+        if (!matchesFilters(c, filters, ctx)) return false
+        const q = search.trim().toLowerCase()
+        if (!q) return true
+        return [c.name, c.phone, c.email, c.company_number].filter(Boolean).some((v) => v.toLowerCase().includes(q))
+      }),
+    [kanbanClients, statusFilter, filters, ctx, search]
+  )
+  const kanbanSorted = useMemo(() => sortClients(kanbanFiltered, sort, ctx), [kanbanFiltered, sort, ctx])
 
   // ייצוא ה-CSV חייב לכלול את *כל* השורות התואמות (לא רק העמוד המוצג) —
   // שולף בלולאה עמודי-1000 עם אותה שאילתת בסיס (חיפוש/סינון-שלב/מיון-שרת),
@@ -640,18 +664,30 @@ export default function ClientsPage() {
 
   async function toggleFieldHidden(field) {
     const newSettings = { ...(field.settings || {}), hidden: !field.settings?.hidden }
-    await supabase.from('client_fields').update({ settings: newSettings }).eq('id', field.id)
+    const { error: updError } = await supabase.from('client_fields').update({ settings: newSettings }).eq('id', field.id)
+    if (updError) {
+      toast('עדכון תצוגת השדה נכשל.', 'error')
+      return
+    }
     await loadMeta()
   }
 
   async function archiveField(field) {
-    await supabase.from('client_fields').update({ is_archived: true }).eq('id', field.id)
+    const { error: updError } = await supabase.from('client_fields').update({ is_archived: true }).eq('id', field.id)
+    if (updError) {
+      toast('השבתת השדה נכשלה.', 'error')
+      return
+    }
     await loadMeta()
     toast('השדה הושבת בהצלחה')
   }
 
   async function restoreField(field) {
-    await supabase.from('client_fields').update({ is_archived: false }).eq('id', field.id)
+    const { error: updError } = await supabase.from('client_fields').update({ is_archived: false }).eq('id', field.id)
+    if (updError) {
+      toast('שחזור השדה נכשל.', 'error')
+      return
+    }
     await loadMeta()
     toast('השדה שוחזר בהצלחה')
   }

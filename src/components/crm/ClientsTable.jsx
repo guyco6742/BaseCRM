@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { Link } from 'react-router-dom'
 import BoardCell, { LinkLikeCell } from '../board/BoardCell'
 import Popover from '../board/Popover'
@@ -55,14 +56,14 @@ function SortArrow({ active, dir }) {
   return <span className="text-accent">{dir === 'asc' ? ' ▲' : ' ▼'}</span>
 }
 
-export default function ClientsTable({
-  clients,
+// שורת לקוח בודדת — ממוזגת (memo) כדי שרק שורות שהמידע/הקולבקים שלהן השתנו
+// יתעדכנו, ולא כל הטבלה בכל שינוי מיון או סטייט לא-קשור.
+const ClientRow = memo(function ClientRow({
+  client,
   columns,
   orgId,
   statuses,
-  members = [],
-  sort,
-  onSort,
+  members,
   onArchive,
   onSetStatus,
   onSetField,
@@ -70,7 +71,7 @@ export default function ClientsTable({
 }) {
   const statusOf = (c) => statuses.find((s) => s.id === c.status_id)
 
-  function renderCell(client, col) {
+  function renderCell(col) {
     switch (col.kind) {
       case 'name':
         return (
@@ -137,6 +138,44 @@ export default function ClientsTable({
   }
 
   return (
+    <tr
+      className="border-b border-border bg-surface last:border-b-0 hover:bg-surface-2"
+      data-testid={`client-row-${client.id}`}
+    >
+      {columns.map((col) => (
+        <td key={col.key} className="whitespace-nowrap px-4 py-2 align-middle">
+          {renderCell(col)}
+        </td>
+      ))}
+      <td className="px-2 text-center align-middle">
+        <button
+          onClick={() => onArchive(client)}
+          className="rounded text-text-dim hover:text-status-red focus:outline-none focus:ring-2 focus:ring-accent"
+          title="השבת לקוח (ניתן לשחזור)"
+          aria-label="השבת לקוח (ניתן לשחזור)"
+          data-testid={`client-archive-${client.id}`}
+        >
+          ×
+        </button>
+      </td>
+    </tr>
+  )
+})
+
+function ClientsTable({
+  clients,
+  columns,
+  orgId,
+  statuses,
+  members = [],
+  sort,
+  onSort,
+  onArchive,
+  onSetStatus,
+  onSetField,
+  onSetCustomValue,
+}) {
+  return (
     <div className="overflow-x-auto rounded-lg border border-border" data-testid="clients-table">
       <table className="w-full border-collapse text-sm">
         <thead>
@@ -144,13 +183,25 @@ export default function ClientsTable({
             {columns.map((col) => (
               <th
                 key={col.key}
-                onClick={() => onSort(col.key)}
-                className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-start hover:text-text"
-                title="מיון לפי עמודה זו"
+                aria-sort={
+                  sort?.key === col.key
+                    ? sort.dir === 'asc'
+                      ? 'ascending'
+                      : 'descending'
+                    : 'none'
+                }
+                className="whitespace-nowrap px-4 py-2 text-start"
                 data-testid={`clients-th-${col.key}`}
               >
-                {col.label}
-                <SortArrow active={sort?.key === col.key} dir={sort?.dir} />
+                <button
+                  type="button"
+                  onClick={() => onSort(col.key)}
+                  className="inline-flex cursor-pointer select-none items-center rounded hover:text-text focus:outline-none focus:ring-2 focus:ring-accent"
+                  title="מיון לפי עמודה זו"
+                >
+                  {col.label}
+                  <SortArrow active={sort?.key === col.key} dir={sort?.dir} />
+                </button>
               </th>
             ))}
             <th className="w-10 px-2" />
@@ -158,30 +209,23 @@ export default function ClientsTable({
         </thead>
         <tbody>
           {clients.map((c) => (
-            <tr
+            <ClientRow
               key={c.id}
-              className="border-b border-border bg-surface last:border-b-0 hover:bg-surface-2"
-              data-testid={`client-row-${c.id}`}
-            >
-              {columns.map((col) => (
-                <td key={col.key} className="whitespace-nowrap px-4 py-2 align-middle">
-                  {renderCell(c, col)}
-                </td>
-              ))}
-              <td className="px-2 text-center align-middle">
-                <button
-                  onClick={() => onArchive(c)}
-                  className="text-text-dim hover:text-status-red"
-                  title="השבת לקוח (ניתן לשחזור)"
-                  data-testid={`client-archive-${c.id}`}
-                >
-                  ×
-                </button>
-              </td>
-            </tr>
+              client={c}
+              columns={columns}
+              orgId={orgId}
+              statuses={statuses}
+              members={members}
+              onArchive={onArchive}
+              onSetStatus={onSetStatus}
+              onSetField={onSetField}
+              onSetCustomValue={onSetCustomValue}
+            />
           ))}
         </tbody>
       </table>
     </div>
   )
 }
+
+export default memo(ClientsTable)

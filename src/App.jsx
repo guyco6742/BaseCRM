@@ -3,7 +3,14 @@ import { Routes, Route } from 'react-router-dom'
 import ProtectedRoute from './components/ProtectedRoute'
 import Layout from './components/Layout'
 import OrgLayout from './components/OrgLayout'
+import ErrorBoundary from './components/ErrorBoundary'
 import LoadingSpinner from './components/ui/LoadingSpinner'
+
+// עוטף תוכן-עמוד ב-ErrorBoundary ברמת הנתיב: קריסה של עמוד בודד נבלמת בגבול
+// הזה (בתוך ה-shell/סרגל-הצד) במקום להריק את כל המעטפת. גבול ה-top-level
+// ב-main.jsx נשאר כרשת-הביטחון החיצונית. instance נפרד נוצר לכל נתיב, כך
+// שמעבר לנתיב אחר מאפס אוטומטית את מצב השגיאה.
+const boundary = (el) => <ErrorBoundary>{el}</ErrorBoundary>
 
 const LoginPage = lazy(() => import('./pages/LoginPage'))
 const SignupPage = lazy(() => import('./pages/SignupPage'))
@@ -44,20 +51,20 @@ export default function App() {
           </ProtectedRoute>
         }
       >
-        <Route path="/" element={<DashboardPage />} />
-        <Route path="/admin" element={<AdminPage />} />
+        <Route path="/" element={boundary(<DashboardPage />)} />
+        <Route path="/admin" element={boundary(<AdminPage />)} />
 
         {/* מרחב הארגון — עם סרגל צד וקונטקסט ארגון */}
         <Route path="/org/:orgId" element={<OrgLayout />}>
-          <Route index element={<OrgHomePage />} />
-          <Route path="dashboard" element={<OrgDashboardPage />} />
-          <Route path="reports" element={<ReportsPage />} />
-          <Route path="workspace/:wsId" element={<BoardsPage />} />
-          <Route path="board/:boardId" element={<BoardPage />} />
-          <Route path="clients" element={<ClientsPage />} />
-          <Route path="clients/:clientId" element={<ClientPage />} />
-          <Route path="payments" element={<PaymentsPage />} />
-          <Route path="settings" element={<OrgSettingsPage />} />
+          <Route index element={boundary(<OrgHomePage />)} />
+          <Route path="dashboard" element={boundary(<OrgDashboardPage />)} />
+          <Route path="reports" element={boundary(<ReportsPage />)} />
+          <Route path="workspace/:wsId" element={boundary(<BoardsPage />)} />
+          <Route path="board/:boardId" element={boundary(<BoardPage />)} />
+          <Route path="clients" element={boundary(<ClientsPage />)} />
+          <Route path="clients/:clientId" element={boundary(<ClientPage />)} />
+          <Route path="payments" element={boundary(<PaymentsPage />)} />
+          <Route path="settings" element={boundary(<OrgSettingsPage />)} />
         </Route>
       </Route>
 

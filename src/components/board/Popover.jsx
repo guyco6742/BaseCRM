@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
 // בורר שנפתח דרך portal עם מיקום fixed — לא נחתך ע"י מיכלי overflow של הטבלה
@@ -7,9 +7,15 @@ export default function Popover({ children, panel, panelWidth = 180, label }) {
   const [pos, setPos] = useState(null)
   const triggerRef = useRef(null)
 
+  // סגירה שמחזירה את המיקוד לכפתור המפעיל (mirror של prevFocusRef ב-Modal)
+  function closePopover() {
+    setOpen(false)
+    triggerRef.current?.focus?.()
+  }
+
   function toggle() {
     if (open) {
-      setOpen(false)
+      closePopover()
       return
     }
     const r = triggerRef.current.getBoundingClientRect()
@@ -21,6 +27,19 @@ export default function Popover({ children, panel, panelWidth = 180, label }) {
     })
     setOpen(true)
   }
+
+  // מקש Escape סוגר ומחזיר מיקוד לכפתור המפעיל
+  useEffect(() => {
+    if (!open) return
+    function onKey(e) {
+      if (e.key === 'Escape') {
+        e.stopPropagation()
+        closePopover()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [open])
 
   return (
     <>
@@ -38,12 +57,12 @@ export default function Popover({ children, panel, panelWidth = 180, label }) {
       {open &&
         createPortal(
           <>
-            <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+            <div className="fixed inset-0 z-40" onClick={closePopover} />
             <div
               className="fixed z-50 max-h-72 overflow-auto rounded-md border border-border bg-surface p-2 shadow-xl"
               style={{ right: pos.right, top: pos.top, bottom: pos.bottom, minWidth: panelWidth }}
             >
-              {panel(() => setOpen(false))}
+              {panel(closePopover)}
             </div>
           </>,
           document.body

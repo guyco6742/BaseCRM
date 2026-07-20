@@ -138,7 +138,7 @@ export default function Sidebar() {
             }`
           }
         >
-          📊 דשבורד
+          <span aria-hidden="true">📊</span> דשבורד
         </NavLink>
 
         {/* דוחות */}
@@ -151,7 +151,7 @@ export default function Sidebar() {
             }`
           }
         >
-          📈 דוחות
+          <span aria-hidden="true">📈</span> דוחות
         </NavLink>
 
         {/* CRM — לקוחות */}
@@ -164,7 +164,7 @@ export default function Sidebar() {
             }`
           }
         >
-          🤝 לקוחות
+          <span aria-hidden="true">🤝</span> לקוחות
         </NavLink>
 
         {/* CRM — תשלומים */}
@@ -177,7 +177,7 @@ export default function Sidebar() {
             }`
           }
         >
-          💳 תשלומים
+          <span aria-hidden="true">💳</span> תשלומים
         </NavLink>
 
         <div className="mb-2 border-b border-border" />
@@ -242,7 +242,7 @@ export default function Sidebar() {
               }`
             }
           >
-            ⚙ הגדרות ומשתמשים
+            <span aria-hidden="true">⚙</span> הגדרות ומשתמשים
           </NavLink>
         </div>
       )}

@@ -35,7 +35,7 @@ export function TextEditor({ value, onChange, type = 'text', display }) {
           if (e.key === 'Enter') commit()
           if (e.key === 'Escape') setEditing(false)
         }}
-        className="h-full w-full bg-transparent px-2 text-center text-sm text-text outline-none"
+        className="h-full w-full bg-transparent px-2 text-center text-sm text-text outline-none focus:ring-2 focus:ring-accent focus:ring-offset-1"
       />
     )
   }
@@ -68,7 +68,7 @@ function BoardCell({ column, value, onChange, members = [], clients = [], canEdi
       const cell = (
         <div className="flex h-full items-center justify-center gap-1 px-2 text-sm text-text">
           {current ? (
-            <span className="truncate">🤝 {current.name}</span>
+            <span className="truncate"><span aria-hidden="true">🤝</span> {current.name}</span>
           ) : (
             <span className="text-text-dim">—</span>
           )}
@@ -78,6 +78,7 @@ function BoardCell({ column, value, onChange, members = [], clients = [], canEdi
       return (
         <Popover
           panelWidth={220}
+          label="בחר לקוח"
           panel={(close) => (
             <div className="max-h-56 space-y-1 overflow-auto">
               {clients.length === 0 && (
@@ -135,6 +136,7 @@ function BoardCell({ column, value, onChange, members = [], clients = [], canEdi
       if (!canEdit) return readOnlyWrap(<span className="truncate">{value || '—'}</span>)
       return (
         <Popover
+          label="ערוך טקסט"
           panel={(close) => (
             <LongTextPanel value={value} onChange={onChange} close={close} />
           )}
@@ -178,7 +180,7 @@ function BoardCell({ column, value, onChange, members = [], clients = [], canEdi
           value={value || ''}
           disabled={!canEdit}
           onChange={(e) => onChange(e.target.value)}
-          className="h-full w-full bg-transparent px-2 text-center text-sm text-text outline-none disabled:opacity-70"
+          className="h-full w-full bg-transparent px-2 text-center text-sm text-text outline-none focus:ring-2 focus:ring-accent focus:ring-offset-1 disabled:opacity-70"
         />
       )
 
@@ -209,6 +211,7 @@ function BoardCell({ column, value, onChange, members = [], clients = [], canEdi
       if (!canEdit) return cell
       return (
         <Popover
+          label="בחר סטטוס"
           panel={(close) => (
             <div className="space-y-1">
               {labels.map((l) => (
@@ -252,6 +255,7 @@ function BoardCell({ column, value, onChange, members = [], clients = [], canEdi
       if (!canEdit) return cell
       return (
         <Popover
+          label="בחר אפשרות"
           panel={(close) => (
             <div className="space-y-1">
               {options.map((o) => (
@@ -297,6 +301,7 @@ function BoardCell({ column, value, onChange, members = [], clients = [], canEdi
       if (!canEdit) return cell
       return (
         <Popover
+          label="בחר אחראי"
           panel={(close) => (
             <div className="max-h-56 space-y-1 overflow-auto">
               {members.map((m) => (
@@ -345,7 +350,7 @@ function LongTextPanel({ value, onChange, close }) {
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         rows={4}
-        className="w-full rounded-md border border-border bg-bg px-2 py-1.5 text-sm text-text outline-none focus:border-accent"
+        className="w-full rounded-md border border-border bg-bg px-2 py-1.5 text-sm text-text outline-none focus:border-accent focus:ring-2 focus:ring-accent/50"
       />
       <div className="mt-2 flex justify-start gap-2">
         <button
@@ -386,7 +391,7 @@ export function LinkLikeCell({ value, onChange, canEdit, kind }) {
           if ((draft ?? '') !== (value ?? '')) onChange(draft)
         }}
         onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
-        className="h-full w-full bg-transparent px-2 text-center text-sm text-text outline-none"
+        className="h-full w-full bg-transparent px-2 text-center text-sm text-text outline-none focus:ring-2 focus:ring-accent focus:ring-offset-1"
       />
     )
   }
@@ -409,10 +414,11 @@ export function LinkLikeCell({ value, onChange, canEdit, kind }) {
       {canEdit && (
         <button
           onClick={() => setEditing(true)}
-          className="text-text-dim hover:text-text"
+          className="rounded text-text-dim hover:text-text focus:outline-none focus:ring-2 focus:ring-accent"
           title="עריכה"
+          aria-label="עריכה"
         >
-          ✎
+          <span aria-hidden="true">✎</span>
         </button>
       )}
     </div>

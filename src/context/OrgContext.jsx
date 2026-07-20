@@ -30,13 +30,18 @@ export function OrgProvider({ children }) {
 
   const loadMembers = useCallback(async () => {
     const forOrg = orgId
-    const { data } = await supabase
-      .from('memberships')
-      .select('user_id, role, profiles(full_name, email, is_super_admin)')
-      .eq('org_id', forOrg)
-    // Bail if the org changed while this request was in flight
-    if (orgIdRef.current !== forOrg) return
-    if (data) setMembers(data)
+    try {
+      const { data } = await supabase
+        .from('memberships')
+        .select('user_id, role, profiles(full_name, email, is_super_admin)')
+        .eq('org_id', forOrg)
+      // Bail if the org changed while this request was in flight
+      if (orgIdRef.current !== forOrg) return
+      if (data) setMembers(data)
+    } catch {
+      // נקרא fire-and-forget מ-load() — בולעים את הדחייה כדי שלא תהפוך
+      // ל-unhandled rejection; החברים פשוט יישארו ריקים עד רענון הבא.
+    }
   }, [orgId])
 
   // טוען את המועדף האישי של המשתמש לארגון הזה (בורד או עמוד לקוחות), אם קיים ותקף
