@@ -4,8 +4,10 @@ import { useToast } from '../../context/ToastContext'
 import Button from '../ui/Button'
 import Input from '../ui/Input'
 import { handleEnterAsTab } from '../../lib/formNav'
+import { PAYMENT_PROVIDERS } from '../../lib/payments'
 
-// חיבור חשבונות סליקה (Cardcom + Grow) — אדמינים בלבד, מוצג בהגדרות הארגון
+// חיבור חשבונות סליקה — אדמינים בלבד, מוצג בהגדרות הארגון.
+// בחירת ספק מתוך dropdown; הוספת ספק עתידי = ערך ב-PAYMENT_PROVIDERS + כרטיס ב-PROVIDER_CARDS.
 
 // בדיקת חיבור משותפת: יוצרים לינק אמיתי על ₪1 ומארכבים מיד
 async function runConnectionTest(orgId, provider, toast, setTestUrl) {
@@ -78,9 +80,9 @@ function CardcomCard({ orgId, account, reload }) {
   }
 
   return (
-    <section className="rounded-lg border border-border bg-surface p-4" data-testid="payment-provider-manager">
+    <div data-testid="payment-provider-manager">
       <div className="mb-3 flex items-center justify-between">
-        <h2 className="font-semibold text-text">תשלומים וסליקה (Cardcom)</h2>
+        <h3 className="text-sm font-medium text-text-muted">חיבור Cardcom</h3>
         <ActiveToggle account={account} onToggled={reload} testid="provider-active-toggle" />
       </div>
       <form onSubmit={save} onKeyDown={handleEnterAsTab} className="space-y-3">
@@ -105,7 +107,7 @@ function CardcomCard({ orgId, account, reload }) {
           </p>
         )}
       </form>
-    </section>
+    </div>
   )
 }
 
@@ -144,9 +146,9 @@ function GrowCard({ orgId, account, reload }) {
   }
 
   return (
-    <section className="rounded-lg border border-border bg-surface p-4" data-testid="payment-provider-grow">
+    <div data-testid="payment-provider-grow">
       <div className="mb-3 flex items-center justify-between">
-        <h2 className="font-semibold text-text">תשלומים וסליקה (Grow)</h2>
+        <h3 className="text-sm font-medium text-text-muted">חיבור Grow</h3>
         <ActiveToggle account={account} onToggled={reload} testid="provider-grow-active-toggle" />
       </div>
       <form onSubmit={save} onKeyDown={handleEnterAsTab} className="space-y-3">
@@ -169,12 +171,16 @@ function GrowCard({ orgId, account, reload }) {
           </p>
         )}
       </form>
-    </section>
+    </div>
   )
 }
 
+// רישום כרטיסי ההגדרות — ספק חדש נוסף כאן וב-PAYMENT_PROVIDERS ותו לא
+const PROVIDER_CARDS = { cardcom: CardcomCard, grow: GrowCard }
+
 export default function PaymentProviderManager({ orgId }) {
   const [accounts, setAccounts] = useState(null) // null = טוען
+  const [selected, setSelected] = useState('')   // '' = טרם נבחר ידנית
 
   const load = useCallback(async () => {
     const { data } = await supabase.from('payment_provider_accounts_safe')
@@ -185,11 +191,32 @@ export default function PaymentProviderManager({ orgId }) {
 
   if (accounts === null) return null
   const byProvider = Object.fromEntries(accounts.map((a) => [a.provider, a]))
+  // ברירת מחדל: הספק המחובר הראשון לפי סדר הרישום; אין מחובר — הראשון ברשימה
+  const providerKeys = Object.keys(PROVIDER_CARDS)
+  const current = selected || providerKeys.find((k) => byProvider[k]) || providerKeys[0]
+  const Card = PROVIDER_CARDS[current]
+
+  function statusSuffix(key) {
+    const acc = byProvider[key]
+    if (!acc) return ''
+    return acc.is_active ? ' — מחובר ופעיל' : ' — מחובר (כבוי)'
+  }
+
   return (
-    <div className="space-y-4">
+    <section className="rounded-lg border border-border bg-surface p-4 space-y-4" data-testid="payment-provider-settings">
+      <h2 className="font-semibold text-text">תשלומים וסליקה</h2>
+      <label className="block">
+        <span className="mb-1 block text-sm text-text-muted">ספק סליקה</span>
+        <select value={current} onChange={(e) => setSelected(e.target.value)}
+          className="w-full rounded-md border border-border bg-bg px-3 py-2 text-text outline-none focus:border-accent"
+          data-testid="settings-provider-select">
+          {providerKeys.map((key) => (
+            <option key={key} value={key}>{PAYMENT_PROVIDERS[key]?.label || key}{statusSuffix(key)}</option>
+          ))}
+        </select>
+      </label>
       {/* key מאלץ רימאונט אחרי טעינה-מחדש כדי לרענן ערכים התחלתיים מהשרת */}
-      <CardcomCard key={`cc-${byProvider.cardcom?.id ?? 'new'}`} orgId={orgId} account={byProvider.cardcom} reload={load} />
-      <GrowCard key={`gr-${byProvider.grow?.id ?? 'new'}`} orgId={orgId} account={byProvider.grow} reload={load} />
-    </div>
+      <Card key={`${current}-${byProvider[current]?.id ?? 'new'}`} orgId={orgId} account={byProvider[current]} reload={load} />
+    </section>
   )
 }
