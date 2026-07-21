@@ -2,12 +2,20 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useTitle } from '../lib/useTitle'
-import { PAYMENT_STATUSES, PAYMENT_METHODS, formatAmount, sumByStatus, paymentToCSVRow, PAYMENT_CSV_HEADERS } from '../lib/payments'
+import { PAYMENT_STATUSES, PAYMENT_METHODS, formatAmount, paymentToCSVRow, PAYMENT_CSV_HEADERS } from '../lib/payments'
 import { exportRowsToCSV, downloadCSV } from '../lib/csv'
 import { PaymentStatusChip } from '../components/crm/PaymentsSection'
 import Button from '../components/ui/Button'
 import Pagination from '../components/Pagination'
 import { usePagedQuery } from '../hooks/usePagedQuery'
+
+// invoice_url מגיע מ-webhook של ספק תשלומים חיצוני (Cardcom/Grow) — לא לתת בו
+// אמון עיוור. מחזיר את ה-URL רק אם הוא http/https (חוסם javascript:, data: וכו')
+// כדי לא לרנדר href מסוכן; אחרת null → מוצג טקסט רגיל במקום קישור.
+function safeHttpUrl(url) {
+  if (typeof url !== 'string') return null
+  return /^https?:\/\//i.test(url.trim()) ? url : null
+}
 
 // שלד טעינה (animate-pulse) לטבלת התשלומים — מוצג בזמן שהעמוד הראשון נטען
 // או מתחלף (סינון/עימוד), במקום קפיצת "מסך ריק ואז מלא" (F27).
@@ -77,10 +85,9 @@ export default function PaymentsPage() {
   })
 
   // ---- KPI: סה"כ שולם/ממתין על *כל* התוצאות התואמות (לא רק העמוד המוצג) ----
-  // החלטה (ר' דוח המשימה): שאילתת-עזר קלה נוספת (status, amount בלבד — לא כל
-  // השורה) עם אותם סינונים כמו הרשימה אך בלי range, מצטברת בצד לקוח דרך
-  // sumByStatus — אותה תבנית כמו statusCounts ב-ClientsPage. עלות ה-scan
-  // מקובלת (אותו סדר גודל כמו הרשימה עצמה, פר-ארגון).
+  // אגרגציה בצד שרת (RPC get_payment_totals) — מחזירה שורות { status, total }
+  // עם אותם סינונים כמו הרשימה (status/from/to, null כשלא הוגדר), במקום סריקת
+  // כל השורות וצבירה בצד לקוח. שומר על אותה צורת state ({ pending, paid }).
   const [totals, setTotals] = useState({ pending: 0, paid: 0 })
   const [totalsLoading, setTotalsLoading] = useState(true)
   useEffect(() => {
@@ -88,13 +95,24 @@ export default function PaymentsPage() {
     let active = true
     async function loadTotals() {
       setTotalsLoading(true)
-      let q = supabase.from('payments').select('status, amount').eq('org_id', orgId).eq('is_archived', false)
-      if (status) q = q.eq('status', status)
-      if (from) q = q.gte('created_at', from)
-      if (to) q = q.lte('created_at', to + 'T23:59:59')
-      const { data } = await q
+      const { data, error } = await supabase.rpc('get_payment_totals', {
+        p_org_id: orgId,
+        p_status: status || null,
+        p_from: from || null,
+        p_to: to ? to + 'T23:59:59' : null,
+      })
       if (!active) return
-      setTotals(sumByStatus(data || []))
+      if (error) {
+        // כשל ה-RPC — לא מפילים את העמוד; מציגים אפסים (fail-graceful).
+        setTotals({ pending: 0, paid: 0 })
+      } else {
+        const next = { pending: 0, paid: 0 }
+        for (const row of data || []) {
+          if (row.status === 'pending') next.pending = Number(row.total) || 0
+          if (row.status === 'paid') next.paid = Number(row.total) || 0
+        }
+        setTotals(next)
+      }
       setTotalsLoading(false)
     }
     loadTotals()
@@ -179,7 +197,11 @@ export default function PaymentsPage() {
                   <td className="p-3 text-text-dim">{p.method ? PAYMENT_METHODS[p.method]?.label : ''}</td>
                   <td className="p-3"><PaymentStatusChip status={p.status} /></td>
                   <td className="p-3">
-                    {p.invoice_url && <a className="text-accent hover:underline" href={p.invoice_url} target="_blank" rel="noreferrer">צפייה</a>}
+                    {safeHttpUrl(p.invoice_url) ? (
+                      <a className="text-accent hover:underline" href={safeHttpUrl(p.invoice_url)} target="_blank" rel="noreferrer">צפייה</a>
+                    ) : (
+                      p.invoice_url && <span className="text-text-dim">חשבונית</span>
+                    )}
                   </td>
                 </tr>
               ))}

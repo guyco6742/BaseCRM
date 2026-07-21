@@ -25,27 +25,33 @@ async function settle(svc: ReturnType<typeof serviceClient>, paymentId: string,
 }
 
 Deno.serve(async (req) => {
-  // אימות סוד משותף — נאכף רק אם הוגדר PAYMENT_WEBHOOK_SECRET (תאימות לאחור).
+  // הערה: ה-webhook נקרא שרת-לשרת ע"י ספקי התשלום — אין Origin. כותרת ה-CORS
+  // רלוונטית רק לקוראים מהדפדפן; היעדר Origin לעולם אינו חוסם את העיבוד.
+  const origin = req.headers.get('Origin')
+  const reply = (body: unknown, status = 200) => json(body, status, origin)
+
+  // אימות סוד משותף — fail-closed: אם PAYMENT_WEBHOOK_SECRET לא הוגדר, דוחים הכול.
   const params = new URL(req.url).searchParams
   const expectedSecret = Deno.env.get('PAYMENT_WEBHOOK_SECRET')
-  if (expectedSecret && !safeEqual(params.get('s') ?? '', expectedSecret)) return json({ error: 'forbidden' }, 401)
+  if (!expectedSecret) return reply({ error: 'webhook secret not configured' }, 500)
+  if (!safeEqual(params.get('s') ?? '', expectedSecret)) return reply({ error: 'forbidden' }, 401)
 
   const svc = serviceClient()
   try {
     if (params.get('provider') === 'grow') {
       const { paymentId, providerRef, notifyBody } = await grow.parseWebhook(req)
-      if (!paymentId && !providerRef) return json({ ok: true })
+      if (!paymentId && !providerRef) return reply({ ok: true })
 
       // איתור לפי המזהה שלנו (cField1); נפילה חזרה ל-provider_ref (processId)
       let payment = null
       if (paymentId) ({ data: payment } = await svc.from('payments').select('*').eq('id', paymentId).maybeSingle())
       if (!payment && providerRef) ({ data: payment } = await svc.from('payments').select('*').eq('provider_ref', providerRef).maybeSingle())
-      if (!payment) return json({ ok: true })
+      if (!payment) return reply({ ok: true })
 
       const { data: account } = await svc.from('payment_provider_accounts')
         .select('provider, credentials').eq('id', payment.provider_account_id).maybeSingle()
       // הגנה: notify של Grow חייב להצביע על תשלום ששייך לחשבון Grow
-      if (!account || account.provider !== 'grow') return json({ ok: true })
+      if (!account || account.provider !== 'grow') return reply({ ok: true })
 
       if (payment.status !== 'paid') {
         // לעולם לא סומכים על גוף ה-notify — מאמתים מול Grow
@@ -54,25 +60,26 @@ Deno.serve(async (req) => {
       }
       // חובה לאשר קבלה גם אם כבר שולם (idempotent אצלנו; מונע 5 שליחות חוזרות)
       await grow.approveTransaction(account.credentials, notifyBody)
-      return json({ ok: true })
+      return reply({ ok: true })
     }
 
     // ברירת מחדל: Cardcom — נתיב קיים ללא שינוי התנהגות
     const { providerRef } = await cardcom.parseWebhook(req)
-    if (!providerRef) return json({ ok: true })
+    if (!providerRef) return reply({ ok: true })
 
     const { data: payment } = await svc.from('payments').select('*').eq('provider_ref', providerRef).maybeSingle()
-    if (!payment || payment.status === 'paid') return json({ ok: true })
+    if (!payment || payment.status === 'paid') return reply({ ok: true })
 
     const { data: account } = await svc.from('payment_provider_accounts')
-      .select('credentials').eq('id', payment.provider_account_id).maybeSingle()
-    if (!account) return json({ ok: true })
+      .select('provider, credentials').eq('id', payment.provider_account_id).maybeSingle()
+    // הגנה: webhook של Cardcom חייב להצביע על תשלום ששייך לחשבון Cardcom
+    if (!account || account.provider !== 'cardcom') return reply({ ok: true })
 
     const result = await cardcom.verifyTransaction(account.credentials, providerRef)
     await settle(svc, payment.id, result)
-    return json({ ok: true })
+    return reply({ ok: true })
   } catch (e) {
     console.error('webhook error', e)
-    return json({ ok: true }) // 200 תמיד — נדיאג דרך הלוגים
+    return reply({ ok: true }) // 200 תמיד — נדיאג דרך הלוגים
   }
 })

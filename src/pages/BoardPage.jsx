@@ -92,7 +92,7 @@ export default function BoardPage() {
   // מטא-דאטה של הבורד: בורד/עמודות/קבוצות/לקוחות — קלים, לא מעומדים.
   // מוחזר groupList כדי ש-loadItemWindows יוכל לרוץ מיד אחרי, בלי לחכות
   // לרינדור נוסף שיקרא את groups מה-state (שעדיין לא התעדכן באותו tick).
-  async function loadMeta() {
+  async function loadMeta(isActive = () => true) {
     setMetaLoading(true)
     try {
       const [bRes, cRes, gRes, clRes] = await Promise.all([
@@ -103,6 +103,7 @@ export default function BoardPage() {
         // לקוחות הארגון — לעמודות מסוג "לקוח"
         supabase.from('clients').select('id, name').eq('org_id', orgId).eq('is_archived', false).order('name'),
       ])
+      if (!isActive()) return []
       if (bRes.error) throw bRes.error
       setBoard(bRes.data)
       setColumns(cRes.data || [])
@@ -111,10 +112,10 @@ export default function BoardPage() {
       setClients(clRes.data || [])
       return groupList
     } catch {
-      setError('טעינת הבורד נכשלה.')
+      if (isActive()) setError('טעינת הבורד נכשלה.')
       return []
     } finally {
-      setMetaLoading(false)
+      if (isActive()) setMetaLoading(false)
     }
   }
 
@@ -122,8 +123,9 @@ export default function BoardPage() {
   // כל אחת מחזירה גם count:'exact' כדי לדעת אם יש עוד להציג "טען עוד" (Item 7).
   // מספר הקבוצות בפועל נמוך (~10 בדרך כלל) — N מקביל מקובל, עדיף על שאילתה
   // שטוחה אחת ל-.range(0,500) שהייתה מפרה את החלוקה הבטוחה-פר-קבוצה מהספק.
-  async function loadItemWindows(groupList) {
+  async function loadItemWindows(groupList, isActive = () => true) {
     if (groupList.length === 0) {
+      if (!isActive()) return
       setItems([])
       setGroupMeta({})
       setItemsLoading(false)
@@ -142,6 +144,7 @@ export default function BoardPage() {
             .range(0, ITEMS_PAGE_SIZE - 1)
         )
       )
+      if (!isActive()) return
       const nextItems = []
       const nextMeta = {}
       results.forEach((res, idx) => {
@@ -158,19 +161,24 @@ export default function BoardPage() {
       setItems(nextItems)
       setGroupMeta(nextMeta)
     } catch {
-      setError('טעינת הפריטים נכשלה.')
+      if (isActive()) setError('טעינת הפריטים נכשלה.')
     } finally {
-      setItemsLoading(false)
+      if (isActive()) setItemsLoading(false)
     }
   }
 
-  async function load() {
-    const groupList = await loadMeta()
-    await loadItemWindows(groupList)
+  async function load(isActive = () => true) {
+    const groupList = await loadMeta(isActive)
+    if (!isActive()) return
+    await loadItemWindows(groupList, isActive)
   }
 
   useEffect(() => {
-    load()
+    let active = true
+    load(() => active)
+    return () => {
+      active = false
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [boardId, orgId])
 
@@ -769,7 +777,7 @@ export default function BoardPage() {
         open={archivedOpen}
         onClose={() => setArchivedOpen(false)}
         boardId={boardId}
-        onRestored={load}
+        onRestored={() => load()}
       />
 
       <Modal open={addGroupOpen} onClose={() => setAddGroupOpen(false)} title="קבוצה חדשה">

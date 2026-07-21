@@ -50,7 +50,7 @@ export default function ItemModal({
               if (e.key === 'Enter') e.currentTarget.blur()
               if (e.key === 'Escape') setNameDraft(item.name)
             }}
-            className="w-full rounded-md border border-border bg-bg px-3 py-2 text-lg font-medium text-text outline-none focus:border-accent"
+            className="w-full rounded-md border border-border bg-bg px-3 py-2 text-lg font-medium text-text outline-none focus:border-accent focus:ring-2 focus:ring-accent/50"
             data-testid="item-modal-name"
           />
         </label>
@@ -62,7 +62,7 @@ export default function ItemModal({
             value={item.group_id}
             disabled={!canEdit}
             onChange={(e) => onMoveGroup(item, e.target.value)}
-            className="w-full rounded-md border border-border bg-bg px-3 py-2 text-sm text-text outline-none focus:border-accent"
+            className="w-full rounded-md border border-border bg-bg px-3 py-2 text-sm text-text outline-none focus:border-accent focus:ring-2 focus:ring-accent/50"
             data-testid="item-modal-group"
           >
             {groups.map((g) => (

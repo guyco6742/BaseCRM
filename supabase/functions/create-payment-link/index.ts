@@ -5,10 +5,12 @@ import { pickAccount } from '../_shared/providers.ts'
 
 Deno.serve(async (req) => {
   const pre = corsPreflight(req); if (pre) return pre
+  const origin = req.headers.get('Origin')
+  const reply = (body: unknown, status = 200) => json(body, status, origin)
   try {
     const { org_id, client_id, amount, description, max_installments, provider } = await req.json()
-    if (!org_id || !client_id || !amount || !Number.isFinite(Number(amount)) || Number(amount) <= 0) return json({ error: 'bad request' }, 400)
-    if (provider && !['cardcom', 'grow'].includes(provider)) return json({ error: 'bad request' }, 400)
+    if (!org_id || !client_id || !amount || !Number.isFinite(Number(amount)) || Number(amount) <= 0) return reply({ error: 'bad request' }, 400)
+    if (provider && !['cardcom', 'grow'].includes(provider)) return reply({ error: 'bad request' }, 400)
 
     const auth = await requireOrgAdmin(req, org_id)
     if (auth instanceof Response) return auth
@@ -22,14 +24,14 @@ Deno.serve(async (req) => {
     const picked = pickAccount(accounts ?? [], provider ?? null)
     if (picked.error) {
       // תאימות לאחור: הלקוח הישן מצפה ל-'no active provider'
-      return json({ error: picked.error === 'no_active_provider' ? 'no active provider' : picked.error }, 400)
+      return reply({ error: picked.error === 'no_active_provider' ? 'no active provider' : picked.error }, 400)
     }
     const account = picked.account!
-    if (!client || client.org_id !== org_id) return json({ error: 'client not found' }, 404)
+    if (!client || client.org_id !== org_id) return reply({ error: 'client not found' }, 404)
 
     // ל-Grow חובה טלפון נייד ישראלי — נכשלים מוקדם עם קוד ייעודי ל-UI
     if (account.provider === 'grow' && !grow.normalizeIsraeliPhone(client.phone)) {
-      return json({ error: 'client_phone_required' }, 400)
+      return reply({ error: 'client_phone_required' }, 400)
     }
 
     // יוצרים קודם שורת תשלום כדי לקבל id; אם יצירת הלינק תיכשל — מארכבים
@@ -38,7 +40,7 @@ Deno.serve(async (req) => {
       amount: Number(amount), description: description ?? null,
       method: 'credit_card', status: 'pending', created_by: auth.userId,
     }).select().single()
-    if (insErr) return json({ error: 'db insert failed' }, 500)
+    if (insErr) return reply({ error: 'db insert failed' }, 500)
 
     try {
       const appUrl = Deno.env.get('APP_BASE_URL') ?? 'https://base-crm-kohl.vercel.app'
@@ -70,15 +72,15 @@ Deno.serve(async (req) => {
         url = r.url; providerRef = r.providerRef
       }
       await svc.from('payments').update({ payment_link: url, provider_ref: providerRef, provider_meta: providerMeta }).eq('id', payment.id)
-      return json({ payment_id: payment.id, url })
+      return reply({ payment_id: payment.id, url })
     } catch (e) {
       await svc.from('payments').update({ is_archived: true }).eq('id', payment.id)
       console.error('create link failed', e)
       const msg = e instanceof Error && e.message === 'client_phone_required' ? 'client_phone_required' : 'provider error'
-      return json({ error: msg }, msg === 'client_phone_required' ? 400 : 502)
+      return reply({ error: msg }, msg === 'client_phone_required' ? 400 : 502)
     }
   } catch (e) {
     console.error(e)
-    return json({ error: 'internal' }, 500)
+    return reply({ error: 'internal' }, 500)
   }
 })

@@ -7,6 +7,8 @@ const ConfirmContext = createContext(null)
 export function ConfirmProvider({ children }) {
   const [state, setState] = useState(null) // { title, message, confirmText, cancelText, danger }
   const resolveRef = useRef(null)
+  // מיקוד ראשוני על "ביטול" באישור מסוכן — כדי שברירת המחדל לא תהיה הפעולה ההרסנית
+  const cancelRef = useRef(null)
 
   const confirm = useCallback((opts) => {
     return new Promise((resolve) => {
@@ -45,12 +47,13 @@ export function ConfirmProvider({ children }) {
         title={state?.title || ''}
         size="sm"
         testid="confirm-dialog"
+        initialFocusRef={state?.danger ? cancelRef : undefined}
         footer={
           <>
             <Button variant={state?.danger ? 'danger' : 'primary'} onClick={() => close(true)} data-testid="confirm-ok">
               {state?.confirmText}
             </Button>
-            <Button variant="ghost" onClick={() => close(false)}>{state?.cancelText}</Button>
+            <Button ref={cancelRef} variant="ghost" onClick={() => close(false)}>{state?.cancelText}</Button>
           </>
         }
       >

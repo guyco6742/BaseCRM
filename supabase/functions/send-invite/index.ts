@@ -110,6 +110,8 @@ async function sendInviteEmail({
 
 Deno.serve(async (req) => {
   const pre = corsPreflight(req); if (pre) return pre
+  const origin = req.headers.get('Origin')
+  const reply = (body: unknown, status = 200) => json(body, status, origin)
   try {
     const body = await req.json()
     const action = body?.action
@@ -120,7 +122,7 @@ Deno.serve(async (req) => {
       const role = body?.role
 
       if (!orgId || !EMAIL_RE.test(email) || !VALID_ROLES.includes(role)) {
-        return json({ error: 'bad request' }, 400)
+        return reply({ error: 'bad request' }, 400)
       }
 
       const auth = await requireOrgAdmin(req, orgId)
@@ -134,9 +136,9 @@ Deno.serve(async (req) => {
         .single()
 
       if (insErr) {
-        if (insErr.code === '23505') return json({ error: 'already_invited' }, 409)
+        if (insErr.code === '23505') return reply({ error: 'already_invited' }, 409)
         console.error('invite insert failed', insErr)
-        return json({ error: 'internal' }, 500)
+        return reply({ error: 'internal' }, 500)
       }
 
       const [{ data: org }, { data: inviter }] = await Promise.all([
@@ -157,13 +159,13 @@ Deno.serve(async (req) => {
         await svc.from('invitations').update({ last_sent_at: new Date().toISOString() }).eq('id', invitation.id)
       }
 
-      return json({ ok: true, emailSent, inviteUrl })
+      return reply({ ok: true, emailSent, inviteUrl })
     }
 
     if (action === 'resend') {
       const orgId = body?.orgId
       const invitationId = body?.invitationId
-      if (!orgId || !invitationId) return json({ error: 'bad request' }, 400)
+      if (!orgId || !invitationId) return reply({ error: 'bad request' }, 400)
 
       const auth = await requireOrgAdmin(req, orgId)
       if (auth instanceof Response) return auth
@@ -176,11 +178,11 @@ Deno.serve(async (req) => {
         .maybeSingle()
 
       if (!invitation || invitation.org_id !== orgId || invitation.status !== 'pending') {
-        return json({ error: 'not_found' }, 404)
+        return reply({ error: 'not_found' }, 404)
       }
 
       if (invitation.last_sent_at && Date.now() - new Date(invitation.last_sent_at).getTime() < RESEND_COOLDOWN_MS) {
-        return json({ error: 'too_soon' }, 429)
+        return reply({ error: 'too_soon' }, 429)
       }
 
       const [{ data: org }, { data: inviter }] = await Promise.all([
@@ -203,12 +205,12 @@ Deno.serve(async (req) => {
         await svc.from('invitations').update({ last_sent_at: new Date().toISOString() }).eq('id', invitation.id)
       }
 
-      return json({ ok: true, emailSent, inviteUrl })
+      return reply({ ok: true, emailSent, inviteUrl })
     }
 
-    return json({ error: 'bad request' }, 400)
+    return reply({ error: 'bad request' }, 400)
   } catch (e) {
     console.error(e)
-    return json({ error: 'internal' }, 500)
+    return reply({ error: 'internal' }, 500)
   }
 })

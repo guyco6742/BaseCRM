@@ -80,7 +80,7 @@ export default function ClientPage() {
 
   useTitle(client?.name)
 
-  async function load() {
+  async function load(isActive = () => true) {
     setLoading(true)
     try {
       const [cRes, sRes, fRes, ctRes] = await Promise.all([
@@ -89,6 +89,7 @@ export default function ClientPage() {
         supabase.from('client_fields').select('*').eq('org_id', orgId).eq('is_archived', false).order('position'),
         supabase.from('contacts').select('*').eq('client_id', clientId).eq('is_archived', false).order('position'),
       ])
+      if (!isActive()) return
       if (cRes.error || !cRes.data) throw cRes.error || new Error('not found')
       setClient(cRes.data)
       setStatuses(sRes.data || [])
@@ -102,6 +103,7 @@ export default function ClientPage() {
         .eq('org_id', orgId)
         .eq('type', 'client')
         .eq('is_archived', false)
+      if (!isActive()) return
 
       let linked = []
       if (clientCols?.length) {
@@ -129,18 +131,23 @@ export default function ClientPage() {
           linked = results.flatMap((r) => r.data || [])
         }
       }
+      if (!isActive()) return
       const merged = new Map()
       linked.forEach((it) => merged.set(it.id, it))
       setLinkedItems([...merged.values()].sort((a, b) => (a.created_at < b.created_at ? 1 : -1)))
     } catch {
-      setError('טעינת הלקוח נכשלה.')
+      if (isActive()) setError('טעינת הלקוח נכשלה.')
     } finally {
-      setLoading(false)
+      if (isActive()) setLoading(false)
     }
   }
 
   useEffect(() => {
-    load()
+    let active = true
+    load(() => active)
+    return () => {
+      active = false
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientId, orgId])
 

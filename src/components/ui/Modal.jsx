@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 
 const FOCUSABLE = 'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
 
-export default function Modal({ open, onClose, title, children, footer, size = 'md', testid }) {
+export default function Modal({ open, onClose, title, children, footer, size = 'md', testid, initialFocusRef }) {
   const panelRef = useRef(null)
   const prevFocusRef = useRef(null)
   const onCloseRef = useRef(onClose)
@@ -12,11 +12,16 @@ export default function Modal({ open, onClose, title, children, footer, size = '
     if (!open) return
     prevFocusRef.current = document.activeElement
 
-    // מיקוד ראשוני: שדה הקלט הראשון, ואם אין — הפאנל עצמו
+    // מיקוד ראשוני: אלמנט מפורש (initialFocusRef) אם ניתן, אחרת שדה הקלט
+    // הראשון, ואם אין — הפאנל עצמו
     const panel = panelRef.current
-    const focusables = panel ? [...panel.querySelectorAll(FOCUSABLE)] : []
-    const firstInput = focusables.find((el) => ['INPUT', 'SELECT', 'TEXTAREA'].includes(el.tagName))
-    ;(firstInput || focusables[0] || panel)?.focus()
+    if (initialFocusRef?.current) {
+      initialFocusRef.current.focus()
+    } else {
+      const focusables = panel ? [...panel.querySelectorAll(FOCUSABLE)] : []
+      const firstInput = focusables.find((el) => ['INPUT', 'SELECT', 'TEXTAREA'].includes(el.tagName))
+      ;(firstInput || focusables[0] || panel)?.focus()
+    }
 
     const onKey = (e) => {
       if (e.key === 'Escape') {
@@ -41,7 +46,7 @@ export default function Modal({ open, onClose, title, children, footer, size = '
       window.removeEventListener('keydown', onKey)
       prevFocusRef.current?.focus?.()
     }
-  }, [open])
+  }, [open, initialFocusRef])
 
   if (!open) return null
 
